@@ -8,7 +8,7 @@ from datetime import datetime
 app = FastAPI()
 
 # ✅ LINE TOKEN（換你的）
-CHANNEL_ACCESS_TOKEN = "你的LINE_TOKEN"
+CHANNEL_ACCESS_TOKEN = "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4 XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU="
 
 # ✅ Google Sheets（固定寫法，不要改）
 scope = [
