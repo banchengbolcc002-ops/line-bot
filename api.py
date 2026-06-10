@@ -1,16 +1,34 @@
+# ===============================
+# ✅ 基本套件
+# ===============================
 from fastapi import FastAPI, Request
 import requests
-import os, json
+
+# ===============================
+# ✅ Google Sheets
+# ===============================
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
+# ===============================
+# ✅ 系統工具
+# ===============================
+import os, json, random
+
+# ===============================
+# ✅ 建立服務
+# ===============================
 app = FastAPI()
 
+# ===============================
 # ✅ LINE TOKEN（換你的）
+# ===============================
 CHANNEL_ACCESS_TOKEN = "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4 XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU="
 
-# ✅ Google Sheets（固定寫法，不要改）
+# ===============================
+# ✅ Google Sheets 連線
+# ===============================
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
@@ -22,78 +40,71 @@ client = gspread.authorize(creds)
 
 sheet = client.open("linebot-log").sheet1
 
-# ✅ 寫入（加強DEBUG）
-def log_to_sheet(msg):
-    try:
-        print("✅ 準備寫入:", msg)
+# ===============================
+# ✅ 寫入資料
+# ===============================
+def log_to_sheet(user_id, msg, reply, intent):
 
-        sheet.append_row([
-            str(datetime.now()),
-            msg
-        ])
+    sheet.append_row([
+        str(datetime.now()),  # 時間
+        user_id,              # 誰
+        msg,                  # 說什麼
+        reply,                # 回什麼
+        intent                # 類別
+    ])
 
-        print("✅ 寫入成功")
 
-    except Exception as e:
-        print("❌ 寫入失敗:", e)
-
+# ===============================
 # ✅ 回LINE
+# ===============================
 def reply_to_line(token, text):
-    url = "https://api.line.me/v2/bot/message/reply"
 
-    headers = {
-        "Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}",
-        "Content-Type": "application/json"
-    }
+    requests.post(
+        "https://api.line.me/v2/bot/message/reply",
+        headers={
+            "Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "replyToken": token,
+            "messages": [{"type": "text", "text": text}]
+        }
+    )
 
-    body = {
-        "replyToken": token,
-        "messages": [{"type": "text", "text": text}]
-    }
 
-    requests.post(url, headers=headers, json=body)
+# ===============================
+# ✅ 超強關鍵字系統（核心🔥）
+# ===============================
 
-# ✅ 關鍵字邏輯（你要的保留版）
-def handle(msg):
+# 👉 每個分類 = 好幾十個關鍵字（總體上百→可擴充到1000+）
+INTENT_MAP = {
 
-    msg = msg.lower()
+    "greet": [
+        "你好","嗨","hi","hello","早安","午安","晚安",
+        "哈囉","安安","yo","hey","hi there"
+    ],
 
-    if "點名" in msg:
-        return "📢 點名開始", "rollcall"
+    "emotion": [
+        "累","疲倦","壓力","煩","崩潰","不爽","心煩",
+        "好累","超累","很累","不想做","想休息"
+    ],
 
-    if "累" in msg:
-        return "💛 辛苦了", "emotion"
+    "prayer": [
+        "禱告","代禱","主啊","求神","祝福我",
+        "幫我禱告","需要禱告"
+    ],
 
-    if "禱告" in msg:
-        return "🙏 為你禱告", "prayer"
+    "encourage": [
+        "加油","努力","撐住","不要放棄","可以嗎",
+        "撐不住","快不行"
+    ],
 
-    if "你好" in msg:
-        return "🌿 平安", "greet"
+    "rollcall": [
+        "點名","集合","報到","出席","在嗎"
+    ],
 
-    return "✅ 收到", "none"
+    "thanks": [
+        "謝謝","感謝","感恩","3q","thx","thanks"
+    ],
 
-# ✅ Webhook（最重要）
-@app.post("/reply")
-async def reply(request: Request):
-
-    body = await request.json()
-    events = body.get("events", [])
-
-    if not events:
-        return {"ok": True}
-
-    event = events[0]
-
-    msg = event["message"]["text"]
-    reply_token = event["replyToken"]
-
-    # ✅ 關鍵字回應
-    reply_text, intent = handle(msg)
-
-    # ✅ 回LINE
-    reply_to_line(reply_token, reply_text)
-
-    # ✅ ✅ ✅ 一定寫入（最重要）
-    log_to_sheet(msg + " | " + intent)
-
-    return {"ok": True}
+    "bible": [
