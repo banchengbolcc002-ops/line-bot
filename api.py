@@ -1,122 +1,171 @@
+# ===============================
+# ✅ 基本套件
+# ===============================
+from fastapi import FastAPI, Request
+import requests
 import random
 
+# ===============================
+# ✅ Google Sheets 套件
+# ===============================
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
+
+# ===============================
+# ✅ 初始化 APP
+# ===============================
+app = FastAPI()
+
+# ===============================
+# ✅ LINE 設定（請確認你有放token）
+# ===============================
+CHANNEL_ACCESS_TOKEN = "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4 XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU="
+
+# ===============================
+# ✅ Google Sheets 設定
+# ===============================
+
+# 👉 允許Google存取的範圍
+scope = [
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/drive"
+]
+
+# 👉 用 key.json 登入（剛剛你上傳的）
+creds = ServiceAccountCredentials.from_json_keyfile_name("key.json", scope)
+
+# 👉 建立連線
+client = gspread.authorize(creds)
+
+# 👉 開啟你的表（名字要一樣）
+sheet = client.open("linebot-log").sheet1
+
+
+# ===============================
+# ✅ 存資料到 Google Sheet
+# ===============================
+def log_to_sheet(user_id, msg, reply, intent):
+    sheet.append_row([
+        str(datetime.now()),      # 時間
+        user_id,                  # 使用者ID
+        msg,                      # 使用者說什麼
+        reply if reply else "None", # 回覆內容
+        intent                   # 判斷類型
+    ])
+
+
+# ===============================
+# ✅ LINE 回覆
+# ===============================
+def reply_to_line(reply_token, text):
+
+    url = "https://api.line.me/v2/bot/message/reply"
+
+    headers = {
+        "Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "replyToken": reply_token,
+        "messages": [
+            {"type": "text", "text": text}
+        ]
+    }
+
+    requests.post(url, headers=headers, json=data)
+
+
+# ===============================
+# ✅ 智慧回應核心
+# ===============================
+
 seen_users = set()
+attendance = set()
 
 def handle_message(user_msg, user_id):
 
     msg = user_msg.strip().lower()
 
-    # ==========================================
-    # ✅ 0️⃣ 新使用者引導（一次）
-    # ==========================================
+    # ✅ 新使用者（只出現一次）
     if user_id not in seen_users:
         seen_users.add(user_id)
-        return "👋 歡迎！試試：點名 / 禱告 / 經文"
+        return "👋 歡迎！試試：點名 / 禱告 / 經文", "greet"
 
-    # ==========================================
-    # ✅ 1️⃣ 精準控制（最高優先）
-    # ==========================================
+    # ✅ 點名
     if msg in ["到", "到了", "已到", "我到了"]:
         attendance.add(user_id)
-        return f"✅ 已記錄，目前 {len(attendance)} 人到"
+        return f"✅ 已記錄，目前 {len(attendance)} 人到", "arrived"
 
-    # ==========================================
-    # ✅ 2️⃣ 強情緒保護（安全層🔥）
-    # ==========================================
-    strong_emotion = ["想死","自殺","活不下去","撐不下去"]
+    # ✅ 危急情緒
+    if any(w in msg for w in ["想死","自殺","活不下去"]):
+        return "💛 你不是一個人，我們一起禱告", "danger"
 
-    if any(w in msg for w in strong_emotion):
-        return random.choice([
-            "💛 你很重要，神沒有離開你",
-            "🙏 我們可以一起禱告，你不是一個人",
-            "🌿 再難的時候，神仍然與你同在"
-        ])
+    # ✅ 關鍵字
+    if "點名" in msg:
+        attendance.clear()
+        return "📢 點名開始，請回：到", "rollcall"
 
-    # ==========================================
-    # ✅ 3️⃣ 關鍵字系統（穩定層）
-    # ==========================================
-    keyword_map = {
+    if "累" in msg or "壓力" in msg:
+        return "💛 辛苦了，神與你同在", "emotion"
 
-        "rollcall": ["點名","報到","集合"],
-        "emotion": ["累","難過","壓力","崩潰","煩"],
-        "prayer": ["禱告","代禱","主啊"],
-        "encourage": ["加油","不要放棄"],
-        "greet": ["早安","你好","hi"],
-        "thank": ["謝謝","感謝"],
-        "bible": ["經文","聖經"]
-    }
+    if "禱告" in msg:
+        return "🙏 願主看顧你", "prayer"
 
-    for intent, keywords in keyword_map.items():
-        if any(k in msg for k in keywords):
+    if "加油" in msg:
+        return "🔥 你可以的！", "encourage"
 
-            if intent == "rollcall":
-                attendance.clear()
-                return "📢 點名開始，請回：到 ✅"
+    if "你好" in msg or "hi" in msg:
+        return "🌿 平安！", "greet"
 
-            elif intent == "emotion":
-                return random.choice([
-                    "💛 辛苦了，你不是一個人",
-                    "🌿 願神給你平安",
-                ])
+    if "謝謝" in msg:
+        return "🙏 感謝主", "thank"
 
-            elif intent == "prayer":
-                return "🙏 願主看顧你，帶領你"
+    if "經文" in msg:
+        return "📖 詩篇23:1 耶和華是我的牧者", "bible"
 
-            elif intent == "encourage":
-                return "🔥 你可以的，不要放棄！"
-
-            elif intent == "greet":
-                return "🌿 平安！"
-
-            elif intent == "thank":
-                return "🙏 感謝主！"
-
-            elif intent == "bible":
-                return random.choice([
-                    "📖 詩篇23:1 耶和華是我的牧者",
-                    "📖 腓立比書4:13 我靠主凡事都能"
-                ])
-
-    # ==========================================
-    # ✅ 4️⃣ AI模糊語意（核心🔥🔥🔥）
-    # ==========================================
-    semantic_map = {
-
-        "help": ["怎麼辦","怎麼用","可以幫我","我該怎麼做"],
-        "life": ["人生","意義","方向","未來","迷惘"],
-        "tired": ["好累","撐不住","真的很累"],
-        "lost": ["不知道怎麼辦","不知道方向"]
-    }
-
-    for intent, patterns in semantic_map.items():
-        if any(p in msg for p in patterns):
-
-            if intent == "help":
-                return "🤖 你可以試試：點名 / 禱告 / 經文"
-
-            elif intent == "life":
-                return "🌿 有時候方向比速度更重要，願神帶領你"
-
-            elif intent == "tired":
-                return "💛 你可以休息一下，神仍然與你同在"
-
-            elif intent == "lost":
-                return "✨ 當你迷惘時，可以試著停下來尋求神"
-
-    # ==========================================
-    # ✅ 5️⃣ fallback策略（關鍵🔥）
-    # ==========================================
-    confidence_words = ["嗎","怎麼","可以","有沒有","要不要"]
-
-    # 👉 如果很像問題 → 給提示
-    if any(w in msg for w in confidence_words):
-        return "🤖 我目前支援：點名、禱告、經文"
-
-    # 👉 低機率提示（防干擾）
+    # ✅ fallback（偶爾提示）
     if random.random() < 0.03:
-        return "😊 試試：禱告 / 點名 / 經文"
+        return "😊 試試：點名 / 禱告 / 經文", "hint"
 
-    # ==========================================
-    # ✅ 6️⃣ 最終控制（不亂回🔥）
-    # ==========================================
-    return None
+    return None, "none"
+
+
+# ===============================
+# ✅ LINE Webhook
+# ===============================
+@app.post("/reply")
+async def reply(request: Request):
+
+    body = await request.json()
+
+    events = body.get("events", [])
+
+    # ✅ LINE測試用（沒事件）
+    if not events:
+        return {"status": "ok"}
+
+    event = events[0]
+
+    reply_token = event.get("replyToken")
+    message = event.get("message", {})
+
+    # ✅ 只處理文字
+    if message.get("type") != "text":
+        return {"status": "ok"}
+
+    user_msg = message.get("text")
+    user_id = event.get("source", {}).get("userId")
+
+    # ✅ 呼叫智慧邏輯
+    reply_text, intent = handle_message(user_msg, user_id)
+
+    # ✅ 有回才回LINE
+    if reply_text:
+        reply_to_line(reply_token, reply_text)
+
+    # ✅ 一定寫進Google Sheet
+    log_to_sheet(user_id, user_msg, reply_text, intent)
+
+    return {"status": "ok"}
