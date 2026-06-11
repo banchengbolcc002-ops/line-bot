@@ -1,10 +1,10 @@
 # =====================================
-# ✅ 1️⃣ 匯入套件
+# ✅ 1️⃣ 匯入套件（讓程式可以使用功能）
 # =====================================
-from fastapi import FastAPI, Request   # 建立API服務
-import requests                        # 呼叫LINE API
+from fastapi import FastAPI, Request   # 建立API服務（讓LINE連進來）
+import requests                        # 用來呼叫LINE API
 
-import gspread                         # 操作 Google Sheet
+import gspread                         # 連接Google Sheet
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
@@ -12,53 +12,54 @@ import os, json, random               # 系統工具
 
 
 # =====================================
-# ✅ 2️⃣ 建立伺服器
+# ✅ 2️⃣ 建立Web服務
 # =====================================
 app = FastAPI()
 
 
 # =====================================
-# ✅ 3️⃣ LINE TOKEN（⚠️ 絕對不能有空格）
+# ✅ 3️⃣ LINE TOKEN（⚠️不能有空格）
 # =====================================
 CHANNEL_ACCESS_TOKEN = "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4 XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU="
 
 
 # =====================================
-# ✅ 4️⃣ 連線 Google Sheets
+# ✅ 4️⃣ 連線Google Sheets
 # =====================================
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
+# ✅ 從 Render 環境讀取金鑰
 google_key = json.loads(os.environ["GOOGLE_KEY"])
 
 creds = ServiceAccountCredentials.from_json_keyfile_dict(google_key, scope)
 client = gspread.authorize(creds)
 
-# ✅ 聊天紀錄表
+# ✅ 聊天紀錄 Sheet
 sheet = client.open("linebot-log").sheet1
 
-# ✅ 關懷資料表（請先在Google建立）
+# ✅ 關懷資料 Sheet（需自己建立）
 care_sheet = client.open("linebot-care").sheet1
 
 
 # =====================================
-# ✅ 5️⃣ 記錄聊天資料
+# ✅ 5️⃣ 寫聊天紀錄
 # =====================================
 def log_to_sheet(user_name, msg, reply, intent):
 
     sheet.append_row([
         str(datetime.now()),   # 時間
-        user_name,             # 使用者姓名
-        msg,                   # 使用者輸入
+        user_name,             # 使用者名稱
+        msg,                   # 訊息內容
         reply if reply else "None",
-        intent                # 判斷類型
+        intent                 # 分類
     ])
 
 
 # =====================================
-# ✅ 6️⃣ 記錄關懷資料（分開存🔥）
+# ✅ 6️⃣ 寫關懷資料（分開存）
 # =====================================
 def log_care(name, phone, user_id):
 
@@ -71,7 +72,7 @@ def log_care(name, phone, user_id):
 
 
 # =====================================
-# ✅ 7️⃣ 回LINE
+# ✅ 7️⃣ 回 LINE 訊息
 # =====================================
 def reply_to_line(token, text):
 
@@ -89,7 +90,7 @@ def reply_to_line(token, text):
 
 
 # =====================================
-# ✅ 8️⃣ 抓使用者姓名
+# ✅ 8️⃣ user_id → 使用者名稱
 # =====================================
 def get_user_name(user_id):
 
@@ -105,22 +106,22 @@ def get_user_name(user_id):
         if res.status_code == 200:
             return res.json().get("displayName")
         else:
-            return user_id
+            return user_id   # 抓不到就用ID
 
     except:
         return user_id
 
 
 # =====================================
-# ✅ 9️⃣ 關懷流程（超重要🔥）
+# ✅ 9️⃣ 關懷流程（核心🔥）
 # =====================================
-user_sessions = {}
+user_sessions = {}  # 記錄每個人目前填到哪一步
 
 def handle_care(user_id, msg):
 
     msg = msg.strip()
 
-    # ✅ 尚未開始
+    # ✅ 還沒開始
     if user_id not in user_sessions:
 
         if msg in ["關懷申請", "關懷"]:
@@ -156,6 +157,7 @@ def handle_care(user_id, msg):
 
         if msg.upper() == "YES":
 
+            # ✅ 寫入關懷資料
             log_care(
                 session["name"],
                 session["phone"],
@@ -164,11 +166,11 @@ def handle_care(user_id, msg):
 
             del user_sessions[user_id]
 
-            return "🙏 已送出關懷申請", "care"
+            return "🙏 已送出關懷申請，牧者會聯絡您", "care"
 
         if msg.upper() == "NO":
             del user_sessions[user_id]
-            return "❌ 已取消", "care"
+            return "❌ 已取消申請", "care"
 
         return "⚠️ 請輸入 YES 或 NO", "care"
 
@@ -176,7 +178,7 @@ def handle_care(user_id, msg):
 
 
 # =====================================
-# ✅ 🔟 一般對話
+# ✅ 🔟 一般聊天
 # =====================================
 def handle_message(msg):
 
@@ -185,23 +187,23 @@ def handle_message(msg):
     EXACT = {
         "你好": ("🌿 平安！", "greet"),
         "謝謝": ("🙏 感謝主", "thanks"),
-        "test": ("✅ 系統正常", "system")
+        "test": ("✅ 系統正常運作", "system")
     }
 
     if msg in EXACT:
         return EXACT[msg]
 
-    if "累" in msg:
+    if "累" in msg or "壓力" in msg:
         return "💛 辛苦了，你不是一個人", "emotion"
 
-    if "想死" in msg:
+    if "想死" in msg or "撐不住" in msg:
         return "💛 你很重要，我們陪你", "danger"
 
     return None, "none"
 
 
 # =====================================
-# ✅ 1️⃣1️⃣ LINE Webhook
+# ✅ 1️⃣1️⃣ LINE Webhook（入口）
 # =====================================
 @app.post("/reply")
 async def reply(request: Request):
@@ -224,15 +226,15 @@ async def reply(request: Request):
     # ✅ 先跑關懷系統
     reply_text, intent = handle_care(user_id, msg)
 
-    # ✅ 再跑一般對話
+    # ✅ 再跑一般聊天
     if not reply_text:
         reply_text, intent = handle_message(msg)
 
-    # ✅ 回覆
+    # ✅ 回覆LINE
     if reply_text:
         reply_to_line(token, reply_text)
 
-    # ✅ 記錄
+    # ✅ 記錄Google Sheet
     log_to_sheet(user_name, msg, reply_text, intent)
 
     return {"ok": True}
