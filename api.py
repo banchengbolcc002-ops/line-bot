@@ -69,6 +69,24 @@ def reply_to_line(token, text):
     )
 
 
+# ✅ ✅ ✅ ✅ ✅ 👇👇👇 這段是你剛剛新增的（一定要有）
+def get_user_name(user_id):
+
+    url = f"https://api.line.me/v2/bot/profile/{user_id}"
+
+    headers = {
+        "Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}"
+    }
+
+    res = requests.get(url, headers=headers)
+
+    if res.status_code == 200:
+        data = res.json()
+        return data.get("displayName")
+    else:
+        return "unknown"
+
+
 # =====================================
 # ✅ 9️⃣ 精準判斷系統（防亂回🔥）
 # =====================================
@@ -135,6 +153,10 @@ async def reply(request: Request):
 
     msg = event["message"]["text"]
     user_id = event["source"].get("userId")
+
+   # ✅ 👇 加這一行（關鍵🔥）
+    user_name = get_user_name(user_id)
+
     token = event["replyToken"]
 
     # ✅ 判斷
@@ -145,6 +167,7 @@ async def reply(request: Request):
         reply_to_line(token, reply_text)
 
     # ✅ 一定記錄（分析用）
-    log_to_sheet(user_id, msg, reply_text, intent)
+   log_to_sheet(user_name, msg, reply_text, intent)
+
 
     return {"ok": True}
