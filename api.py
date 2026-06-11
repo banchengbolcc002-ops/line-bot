@@ -1,66 +1,71 @@
 # =====================================
-# ✅ 1️⃣ 匯入套件（讓系統能運作）
+# ✅ 1️⃣ 匯入套件
 # =====================================
-from fastapi import FastAPI, Request   # 建立API服務
-import requests                        # 發送HTTP請求（LINE用）
+from fastapi import FastAPI, Request
+import requests
 
-# =====================================
-# ✅ 2️⃣ Google Sheet 當資料庫
-# =====================================
-import gspread
+import gspread   # ✅ 修正：不能有亂文字
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
-# =====================================
-# ✅ 3️⃣ 系統工具
-# =====================================
 import os, json, random
 
 # =====================================
-# ✅ 4️⃣ 建立Web服務（LINE會打這裡）
+# ✅ 2️⃣ 建立服務
 # =====================================
 app = FastAPI()
 
 # =====================================
-# ✅ 5️⃣ LINE TOKEN（⚠️不能有空格）
+# ✅ 3️⃣ TOKEN（⚠️不能有空格）
 # =====================================
 CHANNEL_ACCESS_TOKEN = "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4 XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU="
 
 # =====================================
-# ✅ 6️⃣ 連線 Google Sheets
+# ✅ 4️⃣ Google Sheets
 # =====================================
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-# 👉 從 Render 環境讀 JSON 金鑰
 google_key = json.loads(os.environ["GOOGLE_KEY"])
 
-# 👉 登入
 creds = ServiceAccountCredentials.from_json_keyfile_dict(google_key, scope)
 client = gspread.authorize(creds)
 
-# 👉 開啟試算表
+# ✅ 聊天表
 sheet = client.open("linebot-log").sheet1
 
+# ✅ 關懷表（一定要先建立）
+care_sheet = client.open("linebot-care").sheet1
 
 # =====================================
-# ✅ 7️⃣ 寫資料（分析核心🔥）
+# ✅ 5️⃣ 聊天寫入
 # =====================================
 def log_to_sheet(user_name, msg, reply, intent):
 
     sheet.append_row([
-        str(datetime.now()),   # ⏰ 時間
-        user_name,             # 👤 姓名（不是ID）
-        msg,                   # 💬 訊息
+        str(datetime.now()),
+        user_name,
+        msg,
         reply if reply else "None",
-        intent                # 🧠 分類
+        intent
     ])
 
+# =====================================
+# ✅ 6️⃣ 關懷寫入
+# =====================================
+def log_care(name, phone, user_id):
+
+    care_sheet.append_row([
+        str(datetime.now()),
+        name,
+        phone,
+        user_id
+    ])
 
 # =====================================
-# ✅ 8️⃣ 回LINE
+# ✅ 7️⃣ 回LINE
 # =====================================
 def reply_to_line(token, text):
 
@@ -76,112 +81,112 @@ def reply_to_line(token, text):
         }
     )
 
-
 # =====================================
-# ✅ 9️⃣ 把 user_id 轉名字（關鍵🔥）
+# ✅ 8️⃣ user_id → 姓名
 # =====================================
 def get_user_name(user_id):
 
     try:
         url = f"https://api.line.me/v2/bot/profile/{user_id}"
 
-        headers = {
-            "Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}"
-        }
+        headers = {"Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}"}
 
         res = requests.get(url, headers=headers)
 
         if res.status_code == 200:
-            data = res.json()
-            return data.get("displayName")  # ✅ LINE顯示名稱
+            return res.json().get("displayName")
         else:
-            return user_id  # ❗抓不到就回ID（避免當掉）
+            return user_id
 
     except:
         return user_id
 
+# =====================================
+# ✅ 9️⃣ 關懷流程（核心🔥）
+# =====================================
+user_sessions = {}
+
+def handle_care(user_id, msg):
+
+    if user_id not in user_sessions:
+
+        if msg == "關懷申請"、 "關懷":
+            user_sessions[user_id] = {"step": 1}
+            return "📋 請輸入姓名（格式：姓名:王小明）", "care"
+
+        return None, "none"
+
+    session = user_sessions[user_id]
+
+    # ✅ Step 1
+    if session["step"] == 1:
+
+        if msg.startswith("姓名:"):
+            session["name"] = msg.replace("姓名:", "")
+            session["step"] = 2
+            return "📞 請輸入電話（電話:0912xxxxxx）", "care"
+
+        return "⚠️ 格式錯誤：姓名:王小明", "care"
+
+    # ✅ Step 2
+    if session["step"] == 2:
+
+        if msg.startswith("電話:"):
+            session["phone"] = msg.replace("電話:", "")
+            session["step"] = 3
+            return "✅ 是否送出？YES / NO", "care"
+
+        return "⚠️ 格式錯誤：電話:0912xxxxxx", "care"
+
+    # ✅ Step 3
+    if session["step"] == 3:
+
+        if msg.upper() == "YES":
+
+            log_care(
+                session["name"],
+                session["phone"],
+                user_id
+            )
+
+            del user_sessions[user_id]
+
+            return "🙏 已送出關懷申請", "care"
+
+        if msg.upper() == "NO":
+            del user_sessions[user_id]
+            return "❌ 已取消", "care"
+
+        return "⚠️ 請輸入 YES / NO", "care"
+
+    return None, "none"
 
 # =====================================
-# ✅ 🔟 關鍵字判斷（智慧回應🔥）
+# ✅ 🔟 一般對話
 # =====================================
 def handle_message(msg):
 
     msg = msg.strip().lower()
 
-# ✅ 精準指令（包含系統測試🔥）
-EXACT = {
-    "點名": ("📢 點名開始，請回：到", "rollcall"),
-    "到": ("✅ 已記錄出席", "arrived"),
-    "你好": ("🌿 平安！", "greet"),
-    "謝謝": ("🙏 感謝主", "thanks"),
-    "禱告": ("🙏 為你禱告", "prayer"),
-
-    # ✅ 系統測試
-    "test": ("✅ 系統正常運作", "system"),
-    "測試": ("✅ 系統正常運作", "system"),
-    "系統": ("✅ Bot已啟動 + 資料正常", "system"),
-    "debug": ("✅ Debug模式正常", "system")
-}
-
-    # ✅ 擴增語意（大量關鍵字）
-    MAP = {
-
-        "emotion": {
-            "keywords": [
-                "累","好累","很累","超累","壓力",
-                "壓力大","崩潰","很煩","不想做"
-            ],
-            "reply": [
-                "💛 辛苦了，你不是一個人",
-                "🌿 神與你同在",
-                "🙏 願主給你平安"
-            ]
-        },
-
-        "danger": {
-            "keywords": [
-                "想死","自殺","活不下去","不想活","撐不住"
-            ],
-            "reply": [
-                "💛 你很重要，我們陪你",
-                "🙏 一起禱告",
-                "🌿 神沒有離開你"
-            ]
-        },
-
-        "prayer": {
-            "keywords": [
-                "幫我禱告","為我禱告","需要禱告"
-            ],
-            "reply": [
-                "🙏 願主幫助你",
-                "✨ 神會帶領你"
-            ]
-        },
-
-        "encourage": {
-            "keywords": [
-                "加油","鼓勵我","撐不住了"
-            ],
-            "reply": [
-                "🔥 你可以的",
-                "💪 不要放棄",
-                "🌈 再撐一下就好"
-            ]
-        }
+    EXACT = {
+        "你好": ("🌿 平安！", "greet"),
+        "謝謝": ("🙏 感謝主", "thanks"),
+        "test": ("✅ 系統正常", "system")
     }
 
-    # ✅ 掃描關鍵字
-    for intent, data in MAP.items():
-        if any(k in msg for k in data["keywords"]):
-            return random.choice(data["reply"]), intent
+    if msg in EXACT:
+        return EXACT[msg]
 
-    # ✅ fallback
+    if "累" in msg:
+        return "💛 辛苦了", "emotion"
+
+    if "想死" in msg:
+        return "💛 我們陪你", "danger"
+
     return None, "none"
 
-
 # =====================================
-# ✅ 1️⃣1️⃣ LINE入口（最重要🔥）
+# ✅ 1️⃣1️⃣ LINE入口
 # =====================================
 @app.post("/reply")
 async def reply(request: Request):
@@ -194,22 +199,25 @@ async def reply(request: Request):
 
     event = events[0]
 
-    msg = event["message"]["text"]           # 使用者訊息
-    user_id = event["source"].get("userId")  # 使用者ID
+    msg = event["message"]["text"]
+    user_id = event["source"].get("userId")
 
-    # ✅ 轉姓名
     user_name = get_user_name(user_id)
 
     token = event["replyToken"]
 
-    # ✅ 判斷語意
-    reply_text, intent = handle_message(msg)
+    # ✅ 先關懷
+    reply_text, intent = handle_care(user_id, msg)
 
-    # ✅ 不洗版
+    # ✅ 再AI
+    if not reply_text:
+        reply_text, intent = handle_message(msg)
+
+    # ✅ 回覆
     if reply_text:
         reply_to_line(token, reply_text)
 
-    # ✅ 一定記錄（分析用）
+    # ✅ 記錄
     log_to_sheet(user_name, msg, reply_text, intent)
 
     return {"ok": True}
