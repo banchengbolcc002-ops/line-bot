@@ -189,13 +189,26 @@ async def reply(request: Request):
 
     event = events[0]
 
-    msg = event["message"]["text"]           # 使用者訊息
-    user_id = event["source"].get("userId")  # 使用者ID
+    # ✅ 使用者訊息
+    msg = event["message"]["text"]
 
-    # ✅ 轉成名字
+    # ✅ user_id
+    user_id = event["source"].get("userId")
+
+    # ✅ 👉 抓名字（重點）
     user_name = get_user_name(user_id)
 
+    # ✅ reply token
     token = event["replyToken"]
 
-    # ✅ 判斷語意
+    # ✅ 判斷
     reply_text, intent = handle_message(msg)
+
+    # ✅ 有需要才回
+    if reply_text:
+        reply_to_line(token, reply_text)
+
+    # ✅ 一定記錄（這行跟上面對齊）
+    log_to_sheet(user_name, msg, reply_text, intent)
+
+    return {"ok": True}
