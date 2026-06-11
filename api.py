@@ -108,17 +108,20 @@ def handle_message(msg):
 
     msg = msg.strip().lower()
 
-    # ✅ 精準指令
-    EXACT = {
-        "點名": ("📢 點名開始，請回：到", "rollcall"),
-        "到": ("✅ 已記錄出席", "arrived"),
-        "你好": ("🌿 平安！", "greet"),
-        "謝謝": ("🙏 感謝主", "thanks"),
-        "禱告": ("🙏 為你禱告", "prayer")
-    }
+# ✅ 精準指令（包含系統測試🔥）
+EXACT = {
+    "點名": ("📢 點名開始，請回：到", "rollcall"),
+    "到": ("✅ 已記錄出席", "arrived"),
+    "你好": ("🌿 平安！", "greet"),
+    "謝謝": ("🙏 感謝主", "thanks"),
+    "禱告": ("🙏 為你禱告", "prayer"),
 
-    if msg in EXACT:
-        return EXACT[msg]
+    # ✅ ✅ ✅ 系統測試（你新增的🔥）
+    "test": ("✅ 系統正常運作", "system"),
+    "測試": ("✅ 系統正常運作", "system"),
+    "系統": ("✅ Bot已啟動 + 資料正常", "system"),
+    "debug": ("✅ Debug模式正常", "system")
+}
 
     # ✅ 擴增語意（大量關鍵字）
     MAP = {
