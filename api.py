@@ -6,7 +6,7 @@ import requests                        # 發送HTTP請求（LINE API）
 
 import gspread                         # Google Sheet操作
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import os, json, random               # 系統工具
 
@@ -53,7 +53,7 @@ care_sheet = spreadsheet.worksheet("linebot-care")
 def log_to_sheet(user_name, msg, reply, intent):
 
     sheet.append_row([
-        str(datetime.now()),   # ⏰ 時間
+        str(datetime.now() + timedelta(hours=8)),   # ⏰ 時間
         user_name,             # 👤 姓名
         msg,                   # 💬 訊息
         reply if reply else "None",
@@ -67,7 +67,7 @@ def log_to_sheet(user_name, msg, reply, intent):
 def log_care(user_name, msg, level):
 
     care_sheet.append_row([
-        str(datetime.now()),  # ⏰ 時間
+        str(datetime.now() + timedelta(hours=8)),  # ⏰ 時間
         user_name,            # 👤 姓名
         msg,                  # 💬 訊息
         level,                # 🧠 等級
