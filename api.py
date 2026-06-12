@@ -1,10 +1,10 @@
 # =====================================
-# ✅ 1️⃣ 匯入套件（系統基礎）
+# ✅ 1️⃣ 匯入套件（讓系統能運作）
 # =====================================
-from fastapi import FastAPI, Request   # 建立API入口
-import requests                        # 呼叫LINE API
+from fastapi import FastAPI, Request   # 建立API服務（LINE會呼叫）
+import requests                        # 發送HTTP請求（LINE API）
 
-import gspread                         # 操作Google Sheet
+import gspread                         # Google Sheet操作
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
@@ -12,7 +12,7 @@ import os, json, random               # 系統工具
 
 
 # =====================================
-# ✅ 2️⃣ 建立服務
+# ✅ 2️⃣ 建立Web服務
 # =====================================
 app = FastAPI()
 
@@ -24,23 +24,27 @@ CHANNEL_ACCESS_TOKEN = "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R
 
 
 # =====================================
-# ✅ 4️⃣ Google Sheets連線
+# ✅ 4️⃣ Google Sheets連線（🔥已修正）
 # =====================================
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
+# ✅ 從Render讀取金鑰
 google_key = json.loads(os.environ["GOOGLE_KEY"])
 
 creds = ServiceAccountCredentials.from_json_keyfile_dict(google_key, scope)
 client = gspread.authorize(creds)
 
-# ✅ 聊天紀錄
-sheet = client.open("linebot-log").sheet1
+# ✅ ✅ ✅ 正確寫法（開整個試算表）
+spreadsheet = client.open("linebot-log")
 
-# ✅ 關懷追蹤
-care_sheet = client.open("linebot-care").sheet1
+# ✅ 聊天紀錄分頁
+sheet = spreadsheet.worksheet("linebot-log")
+
+# ✅ ✅ 關懷追蹤分頁（🔥關鍵修正）
+care_sheet = spreadsheet.worksheet("linebot-care")
 
 
 # =====================================
@@ -49,11 +53,11 @@ care_sheet = client.open("linebot-care").sheet1
 def log_to_sheet(user_name, msg, reply, intent):
 
     sheet.append_row([
-        str(datetime.now()),   # 時間
-        user_name,
-        msg,
+        str(datetime.now()),   # ⏰ 時間
+        user_name,             # 👤 姓名
+        msg,                   # 💬 訊息
         reply if reply else "None",
-        intent
+        intent                # 🧠 分類
     ])
 
 
@@ -63,16 +67,16 @@ def log_to_sheet(user_name, msg, reply, intent):
 def log_care(user_name, msg, level):
 
     care_sheet.append_row([
-        str(datetime.now()),  # 時間
-        user_name,            # 姓名
-        msg,                  # 訊息
-        level,                # 等級
-        "未處理"               # 狀態
+        str(datetime.now()),  # ⏰ 時間
+        user_name,            # 👤 姓名
+        msg,                  # 💬 訊息
+        level,                # 🧠 等級
+        "未處理"               # 📌 狀態
     ])
 
 
 # =====================================
-# ✅ 7️⃣ 回LINE
+# ✅ 7️⃣ 回LINE訊息
 # =====================================
 def reply_to_line(token, text):
 
@@ -90,7 +94,7 @@ def reply_to_line(token, text):
 
 
 # =====================================
-# ✅ 8️⃣ user_id → 姓名
+# ✅ 8️⃣ user_id → 使用者名稱
 # =====================================
 def get_user_name(user_id):
 
@@ -110,7 +114,7 @@ def get_user_name(user_id):
 
 
 # =====================================
-# ✅ 9️⃣ AI判斷（核心邏輯）
+# ✅ 9️⃣ AI判斷（邏輯核心🔥）
 # =====================================
 def handle_message(msg):
 
@@ -145,12 +149,12 @@ def handle_message(msg):
 
 
 # =====================================
-# ✅ 🔟 Webhook（主程式🔥）
+# ✅ 🔟 Webhook（主流程🔥）
 # =====================================
 @app.post("/reply")
 async def reply(request: Request):
 
-    # ✅ 接收LINE資料
+    # ✅ 取得LINE資料
     body = await request.json()
     events = body.get("events", [])
 
@@ -162,19 +166,19 @@ async def reply(request: Request):
     msg = event["message"]["text"].strip()
     user_id = event["source"].get("userId")
 
-    # ✅ 取得姓名
+    # ✅ 轉使用者名稱
     user_name = get_user_name(user_id)
 
     token = event["replyToken"]
 
-    # ✅ 判斷訊息
+    # ✅ 判斷語意
     reply_text, intent = handle_message(msg)
 
-    # ✅ 回覆使用者（只做一次）
+    # ✅ 回覆（只一次）
     if reply_text:
         reply_to_line(token, reply_text)
 
-    # ✅ ✅ 關懷追蹤（只做一次🔥）
+    # ✅ ✅ 關懷追蹤（🔥關鍵）
     if intent == "danger":
         log_care(user_name, msg, "🔴 高風險")
 
