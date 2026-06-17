@@ -10,6 +10,7 @@ import requests                        # 發送HTTP請求（LINE用）
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
+from datetime import timedelta
 
 # =====================================
 # ✅ 3️⃣ 系統工具
@@ -51,7 +52,7 @@ sheet = client.open("linebot-log").sheet1
 def log_to_sheet(user_name, msg, reply, intent):
 
     sheet.append_row([
-        str(datetime.now()),   # ⏰ 時間
+        str(datetime.now() + timedelta(hours=8)),   # ⏰ 時間
         user_name,             # 👤 姓名（不是ID）
         msg,                   # 💬 訊息
         reply if reply else "None",
