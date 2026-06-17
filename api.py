@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 # ==========================================
 # ✅ Token（自動去空格）
 # ==========================================
-LINE_TOKEN = "YOUR_LINE_TOKEN".replace(" ", "")
+LINE_TOKEN = "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4 XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU=".replace(" ", "")
 
 LINE_API_URL = "https://api.line.me/v2/bot/message/reply"
 
