@@ -43,7 +43,7 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(google_key, scope)
 client = gspread.authorize(creds)
 
 # 👉 開啟試算表
-sheet = client.open("linebot-log").sheet1
+heet = client.open("linebot-log").worksheet("linebot-care")
 
 
 # =====================================
