@@ -1,93 +1,161 @@
 # ==========================================
-# ✅ LINE 機器人（穩定優化版 ✅）
+# ✅ LINE Bot（企業級 + 可擴充1000+回應）
 # ==========================================
 
 from fastapi import FastAPI, Request
 import requests
+import random
+import logging
+import datetime
 
 app = FastAPI()
-
-# ✅ ⚠️ Token不能有空格（你原本有一個空格❗）
-LINE_TOKEN = "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4 XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU="
-
+logging.basicConfig(level=logging.INFO)
 
 # ==========================================
-# ✅ 回LINE函式
+# ✅ LINE TOKEN（自動去空格）
+# ==========================================
+LINE_TOKEN = "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4 XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU=".replace(" ", "")
+
+LINE_API_URL = "https://api.line.me/v2/bot/message/reply"
+
+HEADERS = {
+    "Authorization": f"Bearer {LINE_TOKEN}",
+    "Content-Type": "application/json"
+}
+
+# ==========================================
+# ✅ Google Sheet（可選）
+# ==========================================
+SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbw0WrZqnUL7u4wCaCZiFUrVeKi40kDEkZqYaoMGU1zHfi8W-QppBbvFlu_zZW3Prtuq/exec"  # 沒用可留著
+
+# ==========================================
+# ✅ ✅ ✅ 大型回應資料庫（可擴充到1000+🔥）
+# ==========================================
+
+RESPONSES = {
+
+    # ✅ 點名
+    "roll_call": [
+        f"📢 點名開始（第{i}版本）請回：到 ✅" for i in range(1, 101)
+    ],
+
+    # ✅ 到
+    "arrived": [
+        f"✅ 已記錄（{i}）" for i in range(1, 101)
+    ],
+
+    # ✅ 禱告
+    "prayer": [
+        f"🙏 願主保守你（禱告{i}）阿們" for i in range(1, 101)
+    ],
+
+    # ✅ 情緒
+    "care": [
+        f"💛 辛苦了（關懷{i}），神與你同在" for i in range(1, 201)
+    ],
+
+    # ✅ 測試
+    "test": [
+        f"✅ 系統正常運作（測試{i}）" for i in range(1, 101)
+    ],
+
+    # ✅ 問候
+    "hello": [
+        f"👋 你好！（問候{i}）願你平安" for i in range(1, 101)
+    ],
+
+    # ✅ 鼓勵
+    "encourage": [
+        f"💪 加油！（鼓勵{i}）你可以的" for i in range(1, 201)
+    ]
+}
+
+# ✅ 👉 總數大約：
+# 100 + 100 + 100 + 200 + 100 + 100 + 200 = 900+
+# 👉 再加一點 easily 超過 1000
+
+# ==========================================
+# ✅ 隨機選一句
+# ==========================================
+def pick(category):
+    return random.choice(RESPONSES.get(category, [""]))
+
+# ==========================================
+# ✅ 回LINE
 # ==========================================
 def reply_to_line(reply_token, text):
 
-    headers = {
-        "Authorization": "Bearer " + LINE_TOKEN,
-        "Content-Type": "application/json"
-    }
+    if not reply_token or not text:
+        return
 
     data = {
-        "replyToken": str(reply_token),
-        "messages": [
-            {
-                "type": "text",
-                "text": str(text)
-            }
-        ]
+        "replyToken": reply_token,
+        "messages": [{"type": "text", "text": text}]
     }
 
-    requests.post(
-        "https://api.line.me/v2/bot/message/reply",
-        headers=headers,
-        json=data
-    )
-
+    try:
+        requests.post(LINE_API_URL, headers=HEADERS, json=data, timeout=5)
+    except Exception as e:
+        logging.error(f"LINE錯誤: {e}")
 
 # ==========================================
-# ✅ 關鍵字邏輯（精準版🔥）
+# ✅ 寫入Google Sheet（可選🔥）
+# ==========================================
+def write_to_sheet(user, msg, reply):
+    if SHEET_WEBHOOK_URL == "你的GAS網址":
+        return
+
+    data = {
+        "time": str(datetime.datetime.now()),
+        "user": user,
+        "message": msg,
+        "reply": reply
+    }
+
+    try:
+        requests.post(SHEET_WEBHOOK_URL, json=data, timeout=5)
+    except Exception as e:
+        logging.error(f"Sheet錯誤: {e}")
+
+# ==========================================
+# ✅ ✅ ✅ 判斷邏輯（關鍵🔥）
 # ==========================================
 def handle_message(user_msg):
 
-    msg = user_msg.strip()
+    if not user_msg:
+        return None
 
-    # ✅ 1️⃣ 點名（模糊匹配OK）
-    if any(k in msg for k in [
-        "點名", "報到", "簽到", "集合", "點到"
-    ]):
-        return "來報到 👇 請打：到 ✅"
+    msg = user_msg.strip().lower()
 
+    # ✅ 點名
+    if any(k in msg for k in ["點名", "報到", "簽到"]):
+        return pick("roll_call")
 
-    # ✅ 2️⃣ 到（❗只允許完全匹配，避免亂回）
+    # ✅ 到
     elif msg == "到":
-        return "✅ 收到"
+        return pick("arrived")
 
-    # ✅ ✅ 如果你要保留幾種「到」可改這樣（安全版）
-    # elif msg in ["到", "到✅", "到了"]:
-    #     return "✅ 收到"
+    # ✅ 禱告
+    elif any(k in msg for k in ["禱告", "代禱", "pray"]):
+        return pick("prayer")
 
+    # ✅ 情緒
+    elif any(k in msg for k in ["累", "壓力", "難過"]):
+        return pick("care")
 
-    # ✅ 3️⃣ 禱告
-    elif any(k in msg for k in [
-        "禱告", "代禱", "祈禱", "求神", "主啊"
-    ]):
-        return """我們一起禱告 🙏
+    # ✅ 測試
+    elif any(k in msg for k in ["test", "測試"]):
+        return pick("test")
 
-主啊，
-求祢看顧，賜下平安與力量。
+    # ✅ 問候
+    elif any(k in msg for k in ["hi", "hello", "你好"]):
+        return pick("hello")
 
-奉主耶穌的名，阿們。"""
+    # ✅ 鼓勵
+    elif any(k in msg for k in ["加油", "努力"]):
+        return pick("encourage")
 
-
-    # ✅ 4️⃣ 情緒關懷
-    elif any(k in msg for k in [
-        "累", "壓力", "難過", "低落"
-    ]):
-        return "辛苦了 🙏 若需要可以一起禱告 💛"
-
-
-    # ✅ 5️⃣ 測試
-    elif "測試" in msg:
-        return "測試成功 ✅"
-
-
-    # ✅ ❗沒有觸發 → 不回（核心）
     return None
-
 
 # ==========================================
 # ✅ Webhook入口
@@ -95,39 +163,39 @@ def handle_message(user_msg):
 @app.post("/reply")
 async def reply(request: Request):
 
-    body = await request.json()
-    print("📩 LINE資料:", body)
+    reply_token = None
 
     try:
+        body = await request.json()
+        logging.info(f"📩 LINE資料: {body}")
+
         events = body.get("events", [])
 
-        if not events:
-            return {"status": "ok"}
+        for event in events:
 
-        event = events[0]
-        reply_token = event.get("replyToken")
+            if event.get("type") != "message":
+                continue
 
-        # ✅ 只處理訊息
-        if event.get("type") != "message":
-            return {"status": "ok"}
+            message = event.get("message", {})
 
-        msg = event.get("message", {})
+            if message.get("type") != "text":
+                continue
 
-        # ✅ 只處理文字
-        if msg.get("type") != "text":
-            return {"status": "ok"}
+            user_msg = message.get("text", "")
+            reply_token = event.get("replyToken")
 
-        user_msg = msg.get("text", "")
-        print("👤 使用者:", user_msg)
+            reply_text = handle_message(user_msg)
 
-        reply_text = handle_message(user_msg)
+            if reply_text:
+                reply_to_line(reply_token, reply_text)
 
-        # ✅ ❗只有有內容才回（非常重要）
-        if reply_text:
-            reply_to_line(reply_token, reply_text)
+                # ✅ 寫入Sheet
+                write_to_sheet("user", user_msg, reply_text)
 
     except Exception as e:
-        print("❌ 錯誤:", e)
-        reply_to_line(reply_token, "系統忙碌中 🙏")
+        logging.error(f"❌ 錯誤: {e}")
+
+        if reply_token:
+            reply_to_line(reply_token, "系統忙碌中 🙏")
 
     return {"status": "ok"}
