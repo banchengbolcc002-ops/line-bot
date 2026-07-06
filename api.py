@@ -1,40 +1,57 @@
-# =====================================
-# LINE Bot + Google Sheet
-# 穩定教學版
-# 作者：資管系教授版
-# =====================================
+# ==========================================
+# 【第1部分】載入套件
+# ==========================================
 
+# FastAPI：建立網站 API
 from fastapi import FastAPI, Request
 
+# requests：連接 LINE API
 import requests
-import gspread
-import json
-import os
 
-from random import choice
+# Google Sheet
+import gspread
+
+# 系統工具
+import os
+import json
+
+# 日期時間
 from datetime import datetime, timedelta
 
+# Google 驗證
 from oauth2client.service_account import (
     ServiceAccountCredentials
 )
 
-# =====================================
-# 建立 FastAPI
-# =====================================
+# ChatGPT
+from openai import OpenAI
+
+
+# ==========================================
+# 【第2部分】建立 FastAPI
+# ==========================================
 
 app = FastAPI()
 
-# =====================================
+
+# ==========================================
+# 【第3部分】讀取 Render 環境變數
+# ==========================================
+
 # LINE Token
-# =====================================
-# 請貼上 LINE Developers 最新 Token
-# 不可有空白
+CHANNEL_ACCESS_TOKEN = os.environ[
+    "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4 XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU="
+]
 
-CHANNEL_ACCESS_TOKEN = "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4 XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU="
+# OpenAI
+client_ai = OpenAI(
+    api_key=os.environ["OPENAI_API_KEY"]
+)
 
-# =====================================
-# Google Sheet 權限設定
-# =====================================
+
+# ==========================================
+# 【第4部分】連接 Google Sheet
+# ==========================================
 
 scope = [
 
@@ -61,15 +78,71 @@ sheet = client.open(
     "linebot-care"
 )
 
-# =====================================
-# 寫入試算表
-# =====================================
+
+# ==========================================
+# 【第5部分】ChatGPT回答
+# ==========================================
+
+def ask_chatgpt(question):
+
+    try:
+
+        response = client_ai.chat.completions.create(
+
+            model="gpt-4o-mini",
+
+            messages=[
+
+                {
+                    "role": "system",
+                    "content":
+                    """
+                    你是靈糧堂AI數位執事。
+
+                    使用繁體中文回答。
+
+                    態度溫和。
+
+                    回答：
+                    1. 聖經問題
+                    2. 禱告問題
+                    3. 職場問題
+                    4. AI問題
+                    5. 一般生活問題
+                    """
+                },
+
+                {
+                    "role": "user",
+                    "content": question
+                }
+
+            ]
+
+        )
+
+        return response.choices[0].message.content
+
+    except Exception as e:
+
+        print("OpenAI錯誤")
+
+        print(e)
+
+        return "目前AI服務忙碌中，請稍後再試。"
+
+
+# ==========================================
+# 【第6部分】寫入 Google Sheet
+# ==========================================
 
 def log_to_sheet(
+
     user_name,
     user_message,
     bot_reply,
     intent
+
 ):
 
     try:
@@ -91,21 +164,23 @@ def log_to_sheet(
 
         ])
 
-        print("Google Sheet 寫入成功")
-
     except Exception as e:
 
-        print("Google Sheet 錯誤")
+        print("Google Sheet錯誤")
 
         print(e)
 
-# =====================================
-# LINE回覆
-# =====================================
+
+# ==========================================
+# 【第7部分】回覆LINE
+# ==========================================
 
 def reply_to_line(
+
     reply_token,
-    message
+
+    text
+
 ):
 
     try:
@@ -135,7 +210,7 @@ def reply_to_line(
 
                         "type": "text",
 
-                        "text": message
+                        "text": text[:1000]
 
                     }
 
@@ -146,44 +221,36 @@ def reply_to_line(
         )
 
         print(
-            "LINE STATUS :",
+            "LINE STATUS:",
             response.status_code
-        )
-
-        print(
-            "LINE RESPONSE :",
-            response.text
         )
 
     except Exception as e:
 
-        print("LINE回覆失敗")
+        print("LINE錯誤")
 
         print(e)
 
-# =====================================
-# 取得LINE名稱
-# =====================================
+
+# ==========================================
+# 【第8部分】取得LINE名稱
+# ==========================================
 
 def get_user_name(user_id):
 
     try:
 
-        url = (
-            f"https://api.line.me/v2/bot/profile/"
-            f"{user_id}"
-        )
-
-        headers = {
-
-            "Authorization":
-            f"Bearer {CHANNEL_ACCESS_TOKEN}"
-
-        }
-
         response = requests.get(
-            url,
-            headers=headers
+
+            f"https://api.line.me/v2/bot/profile/{user_id}",
+
+            headers={
+
+                "Authorization":
+                f"Bearer {CHANNEL_ACCESS_TOKEN}"
+
+            }
+
         )
 
         if response.status_code == 200:
@@ -199,26 +266,21 @@ def get_user_name(user_id):
 
         return user_id
 
-# =====================================
-# 關鍵字判斷
-# =====================================
+
+# ==========================================
+# 【第9部分】固定指令
+# ==========================================
 
 def handle_message(msg):
 
-    msg = msg.strip().lower()
+    msg = msg.strip()
 
-    exact = {
+    commands = {
 
         "你好":
         (
-            "🌿 平安，很高興見到你",
+            "🌿 平安！",
             "greet"
-        ),
-
-        "謝謝":
-        (
-            "🙏 願神祝福你",
-            "thanks"
         ),
 
         "報到":
@@ -229,30 +291,161 @@ def handle_message(msg):
 
         "點名":
         (
-            "📢 點名開始，請回覆 報到",
+            "📢 點名開始，請回覆：報到",
             "rollcall"
         ),
 
         "禱告":
         (
-            "🙏 我願意為你禱告",
+            "🙏 願神祝福你。",
             "prayer"
         )
 
     }
 
-    if msg in exact:
+    if msg in commands:
 
-        return exact[msg]
+        return commands[msg]
 
-    if "累" in msg:
+    # 不是固定指令
+    return None, "chatgpt"
 
-        return (
-            "💛 辛苦了，願主加添力量",
-            "emotion"
+
+# ==========================================
+# 【第10部分】首頁測試
+# ==========================================
+
+@app.get("/")
+
+def home():
+
+    return {
+
+        "status": "ok",
+
+        "message": "LINE BOT RUNNING"
+
+    }
+
+
+# ==========================================
+# 【第11部分】LINE Webhook
+# ==========================================
+
+@app.post("/reply")
+
+async def reply(request: Request):
+
+    try:
+
+        body = await request.json()
+
+        events = body.get(
+            "events",
+            []
         )
 
-    if "壓力" in msg:
+        if len(events) == 0:
 
-        return (
-            "🌿 願神賜你平安與智慧",
+            return {
+
+                "ok": True
+
+            }
+
+        event = events[0]
+
+        # 非訊息事件直接略過
+
+        if event.get("type") != "message":
+
+            return {
+
+                "ok": True
+
+            }
+
+        # 非文字訊息略過
+
+        if event["message"]["type"] != "text":
+
+            return {
+
+                "ok": True
+
+            }
+
+        user_message = (
+            event["message"]["text"]
+        )
+
+        user_id = (
+            event["source"].get(
+                "userId",
+                ""
+            )
+        )
+
+        reply_token = (
+            event["replyToken"]
+        )
+
+        user_name = (
+            get_user_name(user_id)
+        )
+
+        reply_text, intent = (
+            handle_message(user_message)
+        )
+
+        # ChatGPT模式
+
+        if intent == "chatgpt":
+
+            reply_text = ask_chatgpt(
+                user_message
+            )
+
+        # 回LINE
+
+        reply_to_line(
+
+            reply_token,
+
+            reply_text
+
+        )
+
+        # 存Google Sheet
+
+        log_to_sheet(
+
+            user_name,
+
+            user_message,
+
+            reply_text,
+
+            intent
+
+        )
+
+        return {
+
+            "ok": True
+
+        }
+
+    except Exception as e:
+
+        print("Webhook錯誤")
+
+        print(e)
+
+        return {
+
+            "ok": False,
+
+            "error": str(e)
+
+        }
