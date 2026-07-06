@@ -83,12 +83,16 @@ sheet = client.open(
 )
 
 # ==========================================================
-# 5. Gemini AI
-# ==========================================================
+
+# =====================================
+# 5. Gemini AI 問答
+# =====================================
 
 def ask_ai(question):
 
     try:
+
+        print("========== GEMINI START ==========")
 
         response = client_ai.models.generate_content(
 
@@ -97,6 +101,8 @@ def ask_ai(question):
             contents=question
 
         )
+
+        print("========== GEMINI SUCCESS ==========")
 
         if hasattr(response, "text"):
 
@@ -107,14 +113,17 @@ def ask_ai(question):
     except Exception as e:
 
         print("========== GEMINI ERROR ==========")
+
         print(str(e))
-        print("==================================")
+
+        print("===================================")
 
         return """
 AI服務暫時無法使用。
 
-請稍後再試。
-"""
+請稍後再試，
+或通知管理員檢查 Gemini API。
+
 
 # ==========================================================
 # 6. 記錄到 Google Sheet
