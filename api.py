@@ -1,22 +1,13 @@
-# ==========================================================
-# 班級名稱：板橋-iPAS AI應用與雙程式設計實務班
-# 學生姓名：葉堠祿
-# 學生學號：18
-#
-# 專題名稱：
-# LINE Bot + Google Sheet + Gemini AI 智慧助理系統
-# ==========================================================
-
-# ==========================================================
-# 1. 載入套件
-# ==========================================================
+# =====================================
+# 1. 匯入套件
+# =====================================
 
 from fastapi import FastAPI, Request
-
 import requests
 import gspread
 import os
 import json
+import random
 
 from datetime import datetime, timedelta
 
@@ -27,37 +18,38 @@ from oauth2client.service_account import (
 from google import genai
 
 
-# ==========================================================
+# =====================================
 # 2. 建立 FastAPI
-# ==========================================================
+# =====================================
 
 app = FastAPI()
 
 
-# ==========================================================
+# =====================================
 # 3. 讀取 Render 環境變數
-# ==========================================================
+# =====================================
 
+# LINE Access Token
 CHANNEL_ACCESS_TOKEN = os.environ[
-    "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4 XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU="
+    "LINE_CHANNEL_ACCESS_TOKEN"
 ]
 
-GEMINI_API_KEY = os.environ[
-    "AQ.Ab8RN6I5qe1ZTl0UhhxFakpsE3x-Xf5vgPCUn3fEQUmLVYR3_A"
-]
-
+# Gemini API
 client_ai = genai.Client(
-    api_key=GEMINI_API_KEY
+    api_key=os.environ["GEMINI_API_KEY"]
 )
 
 
-# ==========================================================
-# 4. Google Sheet 設定
-# ==========================================================
+# =====================================
+# 4. Google Sheet 連線
+# =====================================
 
 scope = [
+
     "https://www.googleapis.com/auth/spreadsheets",
+
     "https://www.googleapis.com/auth/drive"
+
 ]
 
 google_key = json.loads(
@@ -78,9 +70,9 @@ sheet = client.open(
 )
 
 
-# ==========================================================
-# 5. Gemini AI
-# ==========================================================
+# =====================================
+# 5. Gemini AI 問答
+# =====================================
 
 def ask_ai(question):
 
@@ -91,15 +83,14 @@ def ask_ai(question):
             model="gemini-2.5-flash",
 
             contents=f"""
-你是靈糧堂數位執事。
+你是教會 AI 數位執事。
 
 請使用繁體中文回答。
 
-回答原則：
-
-1. 溫和友善
-2. 清楚易懂
-3. 適合教會使用
+回答風格：
+1. 溫和
+2. 友善
+3. 清楚易懂
 4. 不要太長
 
 問題：
@@ -113,20 +104,21 @@ def ask_ai(question):
 
     except Exception as e:
 
+        print("Gemini錯誤")
         print(str(e))
 
-        return "AI服務暫時無法使用。"
+        return "AI服務暫時無法使用"
 
 
-# ==========================================================
-# 6. 寫入 Google Sheet
-# ==========================================================
+# =====================================
+# 6. 記錄到 Google Sheet
+# =====================================
 
 def log_to_sheet(
 
     user_name,
-    user_message,
-    bot_reply,
+    msg,
+    reply,
     intent
 
 ):
@@ -142,9 +134,9 @@ def log_to_sheet(
 
             user_name,
 
-            user_message,
+            msg,
 
-            bot_reply,
+            reply if reply else "",
 
             intent
 
@@ -152,65 +144,79 @@ def log_to_sheet(
 
     except Exception as e:
 
+        print("Google Sheet錯誤")
         print(e)
 
 
-# ==========================================================
+# =====================================
 # 7. 回覆 LINE
-# ==========================================================
+# =====================================
 
 def reply_to_line(
 
     reply_token,
+
     text
 
 ):
 
-    requests.post(
+    try:
 
-        "https://api.line.me/v2/bot/message/reply",
+        response = requests.post(
 
-        headers={
+            "https://api.line.me/v2/bot/message/reply",
 
-            "Authorization":
-            f"Bearer {CHANNEL_ACCESS_TOKEN}",
+            headers={
 
-            "Content-Type":
-            "application/json"
+                "Authorization":
+                f"Bearer {CHANNEL_ACCESS_TOKEN}",
 
-        },
+                "Content-Type":
+                "application/json"
 
-        json={
+            },
 
-            "replyToken":
-            reply_token,
+            json={
 
-            "messages": [
+                "replyToken":
+                reply_token,
 
-                {
+                "messages": [
 
-                    "type": "text",
+                    {
 
-                    "text": text[:1000]
+                        "type": "text",
 
-                }
+                        "text": text[:1000]
 
-            ]
+                    }
 
-        }
+                ]
 
-    )
+            }
+
+        )
+
+        print(
+            "LINE STATUS:",
+            response.status_code
+        )
+
+    except Exception as e:
+
+        print("LINE錯誤")
+        print(e)
 
 
-# ==========================================================
+# =====================================
 # 8. 取得 LINE 名稱
-# ==========================================================
+# =====================================
 
 def get_user_name(user_id):
 
     try:
 
-        response = requests.get(
+        res = requests.get(
 
             f"https://api.line.me/v2/bot/profile/{user_id}",
 
@@ -223,9 +229,9 @@ def get_user_name(user_id):
 
         )
 
-        if response.status_code == 200:
+        if res.status_code == 200:
 
-            return response.json().get(
+            return res.json().get(
                 "displayName",
                 user_id
             )
@@ -237,32 +243,20 @@ def get_user_name(user_id):
         return user_id
 
 
-# ==========================================================
-# 9. 關鍵字處理
-# ==========================================================
+# =====================================
+# 9. 固定關鍵字
+# =====================================
 
 def handle_message(msg):
 
     msg = msg.strip()
 
-    commands = {
+    exact = {
 
         "你好":
         (
             "🌿 平安！",
             "greet"
-        ),
-
-        "謝謝":
-        (
-            "🙏 感謝主",
-            "thanks"
-        ),
-
-        "禱告":
-        (
-            "🙏 願神祝福你。",
-            "prayer"
         ),
 
         "點名":
@@ -275,46 +269,50 @@ def handle_message(msg):
         (
             "✅ 已記錄出席",
             "arrived"
+        ),
+
+        "謝謝":
+        (
+            "🙏 感謝主",
+            "thanks"
+        ),
+
+        "禱告":
+        (
+            "🙏 為你禱告",
+            "prayer"
         )
 
     }
 
-    if msg in commands:
+    if msg in exact:
 
-        return commands[msg]
+        return exact[msg]
 
-    # 其它問題交給 Gemini
+    # 其它交給 Gemini
 
     return None, "gemini"
 
 
-# ==========================================================
-# 10. Render 首頁
-# ==========================================================
+# =====================================
+# 10. Render 測試頁
+# =====================================
 
 @app.get("/")
 def home():
 
     return {
 
-        "班級名稱": "板橋-iPAS AI應用與雙程式設計實務班",
+        "status": "ok",
 
-        "學生姓名": "葉堠祿",
-
-        "學生學號": "18",
-
-        "專題名稱":
-        "LINE Bot + Google Sheet + Gemini AI",
-
-        "系統狀態":
-        "正常運作"
+        "message": "LINE BOT RUNNING"
 
     }
 
 
-# ==========================================================
+# =====================================
 # 11. LINE Webhook
-# ==========================================================
+# =====================================
 
 @app.post("/reply")
 async def reply(request: Request):
@@ -334,6 +332,10 @@ async def reply(request: Request):
 
         event = events[0]
 
+        if event.get("type") != "message":
+
+            return {"ok": True}
+
         if event["message"]["type"] != "text":
 
             return {"ok": True}
@@ -345,25 +347,25 @@ async def reply(request: Request):
             ""
         )
 
-        reply_token = event[
-            "replyToken"
-        ]
-
         user_name = get_user_name(
             user_id
         )
+
+        reply_token = event[
+            "replyToken"
+        ]
 
         reply_text, intent = (
             handle_message(msg)
         )
 
-        # Gemini 問答
+        # Gemini 回答
 
         if intent == "gemini":
 
             reply_text = ask_ai(msg)
 
-        # LINE 回覆
+        # 回覆 LINE
 
         reply_to_line(
 
@@ -373,7 +375,7 @@ async def reply(request: Request):
 
         )
 
-        # Google Sheet 紀錄
+        # 寫入 Google Sheet
 
         log_to_sheet(
 
@@ -395,6 +397,7 @@ async def reply(request: Request):
 
     except Exception as e:
 
+        print("Webhook錯誤")
         print(str(e))
 
         return {
