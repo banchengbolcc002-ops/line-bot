@@ -8,11 +8,11 @@
 #
 # 功能：
 # 1. LINE訊息接收
-# 2. 點名功能
-# 3. 出席功能
-# 4. Google Sheet紀錄
-# 5. Gemini AI問答
-# 6. 使用者名稱紀錄
+# 2. 關鍵字回覆
+# 3. 點名功能
+# 4. 出席紀錄
+# 5. Google Sheet 紀錄
+# 6. Gemini AI 問答
 # ==========================================================
 
 # ==========================================================
@@ -43,7 +43,7 @@ app = FastAPI()
 
 
 # ==========================================================
-# Render 環境變數
+# 讀取 Render 環境變數
 # ==========================================================
 
 CHANNEL_ACCESS_TOKEN = os.environ[
@@ -54,13 +54,15 @@ GEMINI_API_KEY = os.environ[
     "AQ.Ab8RN6LqYM9n_qOGuOpAXu3J4vpJkBX0NaiuF5beMPBvfxWk-A"
 ]
 
+
+# Gemini Client
 client_ai = genai.Client(
     api_key=GEMINI_API_KEY
 )
 
 
 # ==========================================================
-# Google Sheet 設定
+# Google Sheet 連線
 # ==========================================================
 
 scope = [
@@ -97,6 +99,8 @@ def ask_ai(question):
 
     try:
 
+        print("===== Gemini Start =====")
+
         response = client_ai.models.generate_content(
 
             model="gemini-2.0-flash",
@@ -105,17 +109,21 @@ def ask_ai(question):
 
         )
 
+        print("===== Gemini Success =====")
+
         if hasattr(response, "text"):
 
             return response.text[:1000]
 
-        return "目前無法取得AI回答"
+        return "目前無法取得回答"
 
     except Exception as e:
 
-        print("========== GEMINI ERROR ==========")
+        print("===== Gemini Error =====")
+
         print(str(e))
-        print("==================================")
+
+        print("========================")
 
         return """
 AI服務暫時無法使用
@@ -131,11 +139,8 @@ AI服務暫時無法使用
 def log_to_sheet(
 
     user_name,
-
-    msg,
-
-    reply,
-
+    user_message,
+    bot_reply,
     intent
 
 ):
@@ -151,9 +156,9 @@ def log_to_sheet(
 
             user_name,
 
-            msg,
+            user_message,
 
-            reply,
+            bot_reply,
 
             intent
 
@@ -161,12 +166,13 @@ def log_to_sheet(
 
     except Exception as e:
 
-        print("Google Sheet錯誤")
+        print("Google Sheet 錯誤")
+
         print(str(e))
 
 
 # ==========================================================
-# LINE 回覆
+# 回覆 LINE
 # ==========================================================
 
 def reply_to_line(
@@ -222,11 +228,12 @@ def reply_to_line(
     except Exception as e:
 
         print("LINE錯誤")
+
         print(str(e))
 
 
 # ==========================================================
-# 取得 LINE 使用者名稱
+# 取得 LINE 顯示名稱
 # ==========================================================
 
 def get_user_name(user_id):
@@ -261,7 +268,7 @@ def get_user_name(user_id):
 
 
 # ==========================================================
-# 關鍵字判斷
+# 固定指令
 # ==========================================================
 
 def handle_message(msg):
@@ -303,15 +310,15 @@ def handle_message(msg):
         "自我介紹":
         (
             """
-我是靈糧堂數位執事
+我是靈糧堂數位執事。
 
 功能：
 
 1. AI問答
-2. 點名功能
+2. 點名
 3. 出席紀錄
-4. 禱告協助
-5. Google Sheet紀錄
+4. Google Sheet紀錄
+5. 教會關懷服務
             """,
             "intro"
         )
@@ -326,7 +333,7 @@ def handle_message(msg):
 
 
 # ==========================================================
-# Render 首頁
+# 首頁
 # ==========================================================
 
 @app.get("/")
@@ -401,9 +408,13 @@ async def reply(request: Request):
             handle_message(msg)
         )
 
+        # AI回答
+
         if intent == "gemini":
 
             reply_text = ask_ai(msg)
+
+        # LINE回覆
 
         reply_to_line(
 
@@ -412,6 +423,8 @@ async def reply(request: Request):
             reply_text
 
         )
+
+        # Google Sheet紀錄
 
         log_to_sheet(
 
@@ -434,6 +447,7 @@ async def reply(request: Request):
     except Exception as e:
 
         print("Webhook錯誤")
+
         print(str(e))
 
         return {
