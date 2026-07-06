@@ -80,7 +80,7 @@ def ask_ai(question):
 
         response = client_ai.models.generate_content(
 
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
 
             contents=f"""
 你是教會 AI 數位執事。
