@@ -30,7 +30,7 @@ app = FastAPI()
 # 請貼上 LINE Developers 最新 Token
 # 不可有空白
 
-CHANNEL_ACCESS_TOKEN = "請貼上你的LINE Token"
+CHANNEL_ACCESS_TOKEN = "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4 XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU="
 
 # =====================================
 # Google Sheet 權限設定
