@@ -3,4 +3,5 @@ uvicorn
 requests
 gspread
 oauth2client
-google-genai
+google-generativeai
+python-multipart
