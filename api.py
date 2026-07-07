@@ -3,24 +3,18 @@
 # FastAPI + LINE + Gemini + Google Sheet
 # =====================================
 
-# =====================================
-# 載入套件
-# =====================================
-
 from fastapi import FastAPI, Request
 import requests
 import gspread
 
 from oauth2client.service_account import ServiceAccountCredentials
 
-from datetime import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import google.generativeai as genai
 
 import os
 import json
-import random
 
 # =====================================
 # 建立 FastAPI
@@ -30,7 +24,6 @@ app = FastAPI()
 
 # =====================================
 # LINE Access Token
-# 從 Render 讀取
 # =====================================
 
 CHANNEL_ACCESS_TOKEN = os.getenv(
@@ -38,7 +31,7 @@ CHANNEL_ACCESS_TOKEN = os.getenv(
 )
 
 # =====================================
-# Gemini API 設定
+# Gemini 設定
 # =====================================
 
 genai.configure(
@@ -47,12 +40,14 @@ genai.configure(
     )
 )
 
+# 修正模型名稱
+
 model = genai.GenerativeModel(
-    "gemini-1.5-flash"
+    "gemini-2.5-flash"
 )
 
 # =====================================
-# Google Sheet 設定
+# Google Sheet
 # =====================================
 
 scope = [
@@ -69,9 +64,7 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(
     scope
 )
 
-client = gspread.authorize(
-    creds
-)
+client = gspread.authorize(creds)
 
 sheet = client.open(
     "linebot-log"
@@ -80,13 +73,13 @@ sheet = client.open(
 )
 
 # =====================================
-# 使用者記憶
+# 記憶功能
 # =====================================
 
 user_memory = {}
 
 # =====================================
-# 紀錄到 Google Sheet
+# Google Sheet紀錄
 # =====================================
 
 def log_to_sheet(
@@ -106,11 +99,8 @@ def log_to_sheet(
             ),
 
             user_name,
-
             msg,
-
             reply,
-
             intent
 
         ])
@@ -118,12 +108,12 @@ def log_to_sheet(
     except Exception as e:
 
         print(
-            "Google Sheet錯誤:",
+            "Google Sheet 錯誤:",
             str(e)
         )
 
 # =====================================
-# 回覆 LINE
+# 回覆LINE
 # =====================================
 
 def reply_to_line(
@@ -168,12 +158,12 @@ def reply_to_line(
     except Exception as e:
 
         print(
-            "LINE回覆失敗:",
+            "LINE回覆錯誤:",
             str(e)
         )
 
 # =====================================
-# 取得 LINE 使用者名稱
+# 取得使用者名稱
 # =====================================
 
 def get_user_name(
@@ -214,7 +204,7 @@ def get_user_name(
         return user_id
 
 # =====================================
-# Gemini AI
+# Gemini聊天
 # =====================================
 
 def ask_gemini(
@@ -231,21 +221,20 @@ def ask_gemini(
         history = user_memory[user_name][-6:]
 
         prompt = f"""
-你是一位教會 AI 關懷助理。
+你是一位教會AI關懷助理。
 
 規則：
 
 1. 使用繁體中文
-2. 語氣溫暖
-3. 回答簡潔
-4. 具有鼓勵性
-5. 適合教會關懷
+2. 口氣溫暖
+3. 提供鼓勵
+4. 回答簡潔
 
-聊天記錄：
+聊天紀錄：
 
 {chr(10).join(history)}
 
-使用者：
+使用者問題：
 
 {question}
 """
@@ -268,20 +257,13 @@ def ask_gemini(
 
     except Exception as e:
 
-        error_msg = str(e)
-
-        print(
-            "Gemini錯誤:",
-            error_msg
-        )
-
         return (
             "AI服務暫時無法使用\n\n"
-            + error_msg
+            + str(e)
         )
 
 # =====================================
-# 危機關懷判斷
+# 高風險關懷
 # =====================================
 
 def is_danger_message(msg):
@@ -302,7 +284,7 @@ def is_danger_message(msg):
     )
 
 # =====================================
-# 核心處理
+# 訊息處理
 # =====================================
 
 def handle_message(
@@ -312,62 +294,41 @@ def handle_message(
 
     msg = msg.strip()
 
-    # 危機關懷
-
     if is_danger_message(msg):
 
         return (
 
             "💛 你很重要。\n\n"
             "請立即聯絡家人、朋友或牧者。\n\n"
-            "1925 安心專線\n"
-            "1995 生命線",
+            "1925安心專線\n"
+            "1995生命線",
 
             "danger"
 
         )
 
-    # 固定指令
-
-    exact = {
-
-        "點名": (
-            "📢 點名開始，請回：到",
-            "rollcall"
-        ),
-
-        "到": (
-            "✅ 已記錄出席",
-            "arrived"
-        ),
+    commands = {
 
         "你好": (
             "🌿 平安！",
-            "greet"
-        ),
-
-        "謝謝": (
-            "🙏 感謝主",
-            "thanks"
-        ),
-
-        "禱告": (
-            "🙏 願神賜福你",
-            "prayer"
+            "hello"
         ),
 
         "經文": (
             "📖 詩篇23:1\n耶和華是我的牧者，我必不致缺乏。",
             "bible"
+        ),
+
+        "禱告": (
+            "🙏 願神賜福你。",
+            "prayer"
         )
 
     }
 
-    if msg in exact:
+    if msg in commands:
 
-        return exact[msg]
-
-    # Gemini AI
+        return commands[msg]
 
     ai_reply = ask_gemini(
         user_name,
