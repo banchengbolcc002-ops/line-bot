@@ -422,17 +422,3 @@ async def reply(
         return {
             "ok": False
         }
-
-# 群組模式
-
-if event["source"]["type"] == "group":
-
-    # 沒有提到機器人就不回覆
-    if "@靈糧堂-數位執事" not in msg:
-        return {"ok": True}
-
-    # 移除標記文字
-    msg = msg.replace(
-        "@靈糧堂-數位執事",
-        ""
-    ).strip()
