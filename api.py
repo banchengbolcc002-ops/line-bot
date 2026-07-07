@@ -1,25 +1,36 @@
 # =====================================
 # LINE AI 關懷助理
-# Debug版
+# FastAPI + LINE + Gemini + Google Sheet
+# =====================================
+
+# =====================================
+# 載入套件
 # =====================================
 
 from fastapi import FastAPI, Request
 import requests
+import gspread
+
+from oauth2client.service_account import ServiceAccountCredentials
+
+from datetime import datetime
+from datetime import timedelta
+
+import google.generativeai as genai
+
 import os
 import json
 import random
 
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-
-from datetime import datetime, timedelta
-
-import google.generativeai as genai
+# =====================================
+# 建立 FastAPI
+# =====================================
 
 app = FastAPI()
 
 # =====================================
-# LINE Token
+# LINE Access Token
+# 從 Render 讀取
 # =====================================
 
 CHANNEL_ACCESS_TOKEN = os.getenv(
@@ -27,7 +38,7 @@ CHANNEL_ACCESS_TOKEN = os.getenv(
 )
 
 # =====================================
-# Gemini 設定
+# Gemini API 設定
 # =====================================
 
 genai.configure(
@@ -41,7 +52,7 @@ model = genai.GenerativeModel(
 )
 
 # =====================================
-# Google Sheet
+# Google Sheet 設定
 # =====================================
 
 scope = [
@@ -58,7 +69,9 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(
     scope
 )
 
-client = gspread.authorize(creds)
+client = gspread.authorize(
+    creds
+)
 
 sheet = client.open(
     "linebot-log"
@@ -67,13 +80,13 @@ sheet = client.open(
 )
 
 # =====================================
-# 聊天記憶
+# 使用者記憶
 # =====================================
 
 user_memory = {}
 
 # =====================================
-# Sheet紀錄
+# 紀錄到 Google Sheet
 # =====================================
 
 def log_to_sheet(
@@ -110,7 +123,7 @@ def log_to_sheet(
         )
 
 # =====================================
-# LINE回覆
+# 回覆 LINE
 # =====================================
 
 def reply_to_line(
@@ -118,40 +131,49 @@ def reply_to_line(
     text
 ):
 
-    requests.post(
+    try:
 
-        "https://api.line.me/v2/bot/message/reply",
+        requests.post(
 
-        headers={
+            "https://api.line.me/v2/bot/message/reply",
 
-            "Authorization":
-            f"Bearer {CHANNEL_ACCESS_TOKEN}",
+            headers={
 
-            "Content-Type":
-            "application/json"
+                "Authorization":
+                f"Bearer {CHANNEL_ACCESS_TOKEN}",
 
-        },
+                "Content-Type":
+                "application/json"
 
-        json={
+            },
 
-            "replyToken":
-            token,
+            json={
 
-            "messages": [
+                "replyToken":
+                token,
 
-                {
-                    "type": "text",
-                    "text": str(text)[:5000]
-                }
+                "messages": [
 
-            ]
+                    {
+                        "type": "text",
+                        "text": str(text)[:5000]
+                    }
 
-        }
+                ]
 
-    )
+            }
+
+        )
+
+    except Exception as e:
+
+        print(
+            "LINE回覆失敗:",
+            str(e)
+        )
 
 # =====================================
-# 使用者名稱
+# 取得 LINE 使用者名稱
 # =====================================
 
 def get_user_name(
@@ -197,7 +219,7 @@ def get_user_name(
 
 def ask_gemini(
     user_name,
-    message
+    question
 ):
 
     try:
@@ -209,17 +231,23 @@ def ask_gemini(
         history = user_memory[user_name][-6:]
 
         prompt = f"""
-你是一位教會AI關懷助理
+你是一位教會 AI 關懷助理。
 
-請使用繁體中文
+規則：
 
-聊天紀錄：
+1. 使用繁體中文
+2. 語氣溫暖
+3. 回答簡潔
+4. 具有鼓勵性
+5. 適合教會關懷
+
+聊天記錄：
 
 {chr(10).join(history)}
 
 使用者：
 
-{message}
+{question}
 """
 
         response = model.generate_content(
@@ -229,7 +257,207 @@ def ask_gemini(
         answer = response.text
 
         user_memory[user_name].append(
-            f"使用者:{message}"
+            f"使用者:{question}"
         )
 
         user_memory[user_name].append(
+            f"AI:{answer}"
+        )
+
+        return answer
+
+    except Exception as e:
+
+        error_msg = str(e)
+
+        print(
+            "Gemini錯誤:",
+            error_msg
+        )
+
+        return (
+            "AI服務暫時無法使用\n\n"
+            + error_msg
+        )
+
+# =====================================
+# 危機關懷判斷
+# =====================================
+
+def is_danger_message(msg):
+
+    keywords = [
+
+        "自殺",
+        "想死",
+        "不想活",
+        "活不下去",
+        "結束生命"
+
+    ]
+
+    return any(
+        k in msg
+        for k in keywords
+    )
+
+# =====================================
+# 核心處理
+# =====================================
+
+def handle_message(
+    msg,
+    user_name
+):
+
+    msg = msg.strip()
+
+    # 危機關懷
+
+    if is_danger_message(msg):
+
+        return (
+
+            "💛 你很重要。\n\n"
+            "請立即聯絡家人、朋友或牧者。\n\n"
+            "1925 安心專線\n"
+            "1995 生命線",
+
+            "danger"
+
+        )
+
+    # 固定指令
+
+    exact = {
+
+        "點名": (
+            "📢 點名開始，請回：到",
+            "rollcall"
+        ),
+
+        "到": (
+            "✅ 已記錄出席",
+            "arrived"
+        ),
+
+        "你好": (
+            "🌿 平安！",
+            "greet"
+        ),
+
+        "謝謝": (
+            "🙏 感謝主",
+            "thanks"
+        ),
+
+        "禱告": (
+            "🙏 願神賜福你",
+            "prayer"
+        ),
+
+        "經文": (
+            "📖 詩篇23:1\n耶和華是我的牧者，我必不致缺乏。",
+            "bible"
+        )
+
+    }
+
+    if msg in exact:
+
+        return exact[msg]
+
+    # Gemini AI
+
+    ai_reply = ask_gemini(
+        user_name,
+        msg
+    )
+
+    return (
+        ai_reply,
+        "gemini"
+    )
+
+# =====================================
+# LINE Webhook
+# =====================================
+
+@app.post("/reply")
+async def reply(
+    request: Request
+):
+
+    try:
+
+        body = await request.json()
+
+        events = body.get(
+            "events",
+            []
+        )
+
+        if not events:
+
+            return {
+                "ok": True
+            }
+
+        event = events[0]
+
+        if event.get("type") != "message":
+
+            return {
+                "ok": True
+            }
+
+        if event["message"].get("type") != "text":
+
+            return {
+                "ok": True
+            }
+
+        msg = event["message"]["text"]
+
+        user_id = event["source"].get(
+            "userId",
+            ""
+        )
+
+        token = event["replyToken"]
+
+        user_name = get_user_name(
+            user_id
+        )
+
+        reply_text, intent = handle_message(
+            msg,
+            user_name
+        )
+
+        reply_to_line(
+            token,
+            reply_text
+        )
+
+        log_to_sheet(
+            user_name,
+            msg,
+            reply_text,
+            intent
+        )
+
+        return {
+            "ok": True
+        }
+
+    except Exception as e:
+
+        print(
+            "Webhook錯誤:",
+            str(e)
+        )
+
+        return {
+            "ok": False
+        }
