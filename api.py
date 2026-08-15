@@ -25,7 +25,7 @@ def home():
     return {
         "status": "LINE BOT RUNNING",
         "project": "基督教會AI執事",
-        "student_name": "葉堠祿",
+        "student_name": "Linus",
         "student_id": "18"
     }
 
@@ -46,7 +46,7 @@ def health():
 # =====================================
 
 CHANNEL_ACCESS_TOKEN = os.getenv(
-    "LINE_CHANNEL_ACCESS_TOKEN"
+    "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU="
 )
 
 # =====================================
