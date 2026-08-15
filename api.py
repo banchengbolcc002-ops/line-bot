@@ -1,315 +1,76 @@
 # =====================================
-# LINE AI 關懷助理
-# FastAPI + LINE + Gemini + Google Sheet
+# 基督教會數位執事 AI
 # =====================================
 
+# 載入 FastAPI 套件
 from fastapi import FastAPI, Request
+
+# 載入 requests 套件
 import requests
-import gspread
 
-from oauth2client.service_account import ServiceAccountCredentials
-
-from datetime import datetime, timedelta
-
-import google.generativeai as genai
-
+# 載入作業系統環境變數
 import os
-import json
 
 # =====================================
-# 建立 FastAPI
+# 建立 FastAPI 網站
 # =====================================
 
 app = FastAPI()
+
+# =====================================
+# 首頁
+# 測試 Render 是否正常
+# =====================================
+
+@app.get("/")
+def home():
+
+    return {
+
+        "status": "LINE BOT RUNNING",
+
+        "class_name":
+        "基督教會數位執事 AI",
+
+        "student_name":
+        "Linus",
+
+        "student_id":
+        "18"
+
+    }
+
+# =====================================
+# 健康檢查
+# 給 UptimeRobot 使用
+# =====================================
+
+@app.get("/health")
+def health():
+
+    return {
+
+        "status": "OK"
+
+    }
 
 # =====================================
 # LINE Access Token
 # =====================================
 
 CHANNEL_ACCESS_TOKEN = os.getenv(
-    "LINE_CHANNEL_ACCESS_TOKEN"
+    "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU="
 )
 
 # =====================================
-# Gemini 設定
+# 教會執事固定回覆
 # =====================================
 
-genai.configure(
-    api_key=os.getenv(
-        "GEMINI_API_KEY"
-    )
-)
+commands = {
 
-# 修正模型名稱
+    "你好": """
 
-model = genai.GenerativeModel(
-    "gemini-2.5-flash"
-)
-
-# =====================================
-# Google Sheet
-# =====================================
-
-scope = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
-
-google_key = json.loads(
-    os.environ["GOOGLE_KEY"]
-)
-
-creds = ServiceAccountCredentials.from_json_keyfile_dict(
-    google_key,
-    scope
-)
-
-client = gspread.authorize(creds)
-
-sheet = client.open(
-    "linebot-log"
-).worksheet(
-    "linebot-care"
-)
-
-# =====================================
-# 記憶功能
-# =====================================
-
-user_memory = {}
-
-# =====================================
-# Google Sheet紀錄
-# =====================================
-
-def log_to_sheet(
-    user_name,
-    msg,
-    reply,
-    intent
-):
-
-    try:
-
-        sheet.append_row([
-
-            str(
-                datetime.now()
-                + timedelta(hours=8)
-            ),
-
-            user_name,
-            msg,
-            reply,
-            intent
-
-        ])
-
-    except Exception as e:
-
-        print(
-            "Google Sheet 錯誤:",
-            str(e)
-        )
-
-# =====================================
-# 回覆LINE
-# =====================================
-
-def reply_to_line(
-    token,
-    text
-):
-
-    try:
-
-        requests.post(
-
-            "https://api.line.me/v2/bot/message/reply",
-
-            headers={
-
-                "Authorization":
-                f"Bearer {CHANNEL_ACCESS_TOKEN}",
-
-                "Content-Type":
-                "application/json"
-
-            },
-
-            json={
-
-                "replyToken":
-                token,
-
-                "messages": [
-
-                    {
-                        "type": "text",
-                        "text": str(text)[:5000]
-                    }
-
-                ]
-
-            }
-
-        )
-
-    except Exception as e:
-
-        print(
-            "LINE回覆錯誤:",
-            str(e)
-        )
-
-# =====================================
-# 取得使用者名稱
-# =====================================
-
-def get_user_name(
-    user_id
-):
-
-    try:
-
-        url = (
-            f"https://api.line.me/v2/bot/profile/{user_id}"
-        )
-
-        headers = {
-
-            "Authorization":
-            f"Bearer {CHANNEL_ACCESS_TOKEN}"
-
-        }
-
-        res = requests.get(
-            url,
-            headers=headers
-        )
-
-        if res.status_code == 200:
-
-            data = res.json()
-
-            return data.get(
-                "displayName",
-                user_id
-            )
-
-        return user_id
-
-    except:
-
-        return user_id
-
-# =====================================
-# Gemini聊天
-# =====================================
-
-def ask_gemini(
-    user_name,
-    question
-):
-
-    try:
-
-        if user_name not in user_memory:
-
-            user_memory[user_name] = []
-
-        history = user_memory[user_name][-6:]
-
-        prompt = f"""
-你是一位教會AI關懷助理。
-
-規則：
-
-1. 使用繁體中文
-2. 口氣溫暖
-3. 提供鼓勵
-4. 回答簡潔
-
-聊天紀錄：
-
-{chr(10).join(history)}
-
-使用者問題：
-
-{question}
-"""
-
-        response = model.generate_content(
-            prompt
-        )
-
-        answer = response.text
-
-        user_memory[user_name].append(
-            f"使用者:{question}"
-        )
-
-        user_memory[user_name].append(
-            f"AI:{answer}"
-        )
-
-        return answer
-
-    except Exception as e:
-
-        return (
-            "AI服務暫時無法使用\n\n"
-            + str(e)
-        )
-
-# =====================================
-# 高風險關懷
-# =====================================
-
-def is_danger_message(msg):
-
-    keywords = [
-
-        "自殺",
-        "想死",
-        "不想活",
-        "活不下去",
-        "結束生命"
-
-    ]
-
-    return any(
-        k in msg
-        for k in keywords
-    )
-
-# =====================================
-# 訊息處理
-# =====================================
-
-def handle_message(
-    msg,
-    user_name
-):
-
-    msg = msg.strip()
-
-    if is_danger_message(msg):
-
-        return (
-
-            "💛 你很重要。\n\n"
-            "請立即聯絡家人、朋友或牧者。\n\n"
-            "1925安心專線\n"
-            "1995生命線",
-
-            "danger"
-
-        )
-
-    commands = {
-"你好": (
-    """🌿 平安！
+🌿 平安！
 
 我是基督教會數位執事 AI。
 
@@ -320,112 +81,210 @@ def handle_message(
 如果您有：
 
 🙏 禱告需要
+
 📖 聖經問題
+
 ❤️ 生活關懷
+
 💼 職場困擾
 
 都歡迎與我分享。
 
-我很樂意陪伴您。""",
-    "hello"
-),
-        )
+""",
+
+    "平安": """
+
+🌿 願主耶穌基督的平安與您同在。
+
+願神祝福您與您的家人。
+
+🙏 阿們。
+
+""",
+
+    "經文": """
+
+📖 今日經文
+
+詩篇23:1
+
+耶和華是我的牧者，
+我必不致缺乏。
+
+""",
+
+    "禱告": """
+
+🙏 禱告文
+
+親愛的天父：
+
+感謝祢今天的保守與看顧。
+
+求祢賜給我們平安、
+智慧與力量。
+
+幫助我們面對工作、
+家庭與人生中的挑戰。
+
+奉主耶穌基督的名禱告。
+
+阿們。
+
+""",
+
+    "test": """
+
+✅ 系統運作正常
+
+基督教會數位執事 AI
+
+目前在線服務中。
+
+""",
+
+    "測試": """
+
+✅ 系統運作正常
+
+基督教會數位執事 AI
+
+目前在線服務中。
+
+"""
+}
+
+# =====================================
+# 回覆 LINE
+# =====================================
+
+def reply_to_line(
+    reply_token,
+    text
+):
+
+    url = (
+        "https://api.line.me/v2/bot/message/reply"
+    )
+
+    headers = {
+
+        "Authorization":
+        f"Bearer {CHANNEL_ACCESS_TOKEN}",
+
+        "Content-Type":
+        "application/json"
 
     }
 
-    if msg in commands:
+    body = {
 
-        return commands[msg]
+        "replyToken":
+        reply_token,
 
-    ai_reply = ask_gemini(
-        user_name,
-        msg
-    )
+        "messages": [
 
-    return (
-        ai_reply,
-        "gemini"
+            {
+
+                "type": "text",
+
+                "text": text
+
+            }
+
+        ]
+
+    }
+
+    requests.post(
+        url,
+        headers=headers,
+        json=body,
+        timeout=10
     )
 
 # =====================================
 # LINE Webhook
 # =====================================
 
-@app.post("/reply")
-async def reply(
+@app.post("/callback")
+async def callback(
     request: Request
 ):
 
-    try:
+    body = await request.json()
 
-        body = await request.json()
+    events = body.get(
+        "events",
+        []
+    )
 
-        events = body.get(
-            "events",
-            []
-        )
-
-        if not events:
-
-            return {
-                "ok": True
-            }
-
-        event = events[0]
+    for event in events:
 
         if event.get("type") != "message":
 
-            return {
-                "ok": True
-            }
+            continue
 
-        if event["message"].get("type") != "text":
+        if (
+            event["message"].get("type")
+            != "text"
+        ):
 
-            return {
-                "ok": True
-            }
+            continue
 
-        msg = event["message"]["text"]
+        # 使用者輸入內容
 
-        user_id = event["source"].get(
-            "userId",
-            ""
+        user_message = (
+            event["message"]["text"]
+        ).strip()
+
+        # LINE 回覆代碼
+
+        reply_token = (
+            event["replyToken"]
         )
 
-        token = event["replyToken"]
+        # 固定回覆
 
-        user_name = get_user_name(
-            user_id
-        )
+        if user_message in commands:
 
-        reply_text, intent = handle_message(
-            msg,
-            user_name
-        )
+            reply_text = commands[
+                user_message
+            ]
+
+        else:
+
+            reply_text = f"""
+
+🌿 基督教會數位執事 AI
+
+您剛剛輸入：
+
+{user_message}
+
+目前為教學範例版本。
+
+未來可擴充：
+
+📖 聖經查詢
+
+🙏 禱告助手
+
+❤️ 關懷陪伴
+
+💼 職場諮詢
+
+"""
+
+        # 回覆 LINE
 
         reply_to_line(
-            token,
+            reply_token,
             reply_text
         )
 
-        log_to_sheet(
-            user_name,
-            msg,
-            reply_text,
-            intent
-        )
+    return {
 
-        return {
-            "ok": True
-        }
+        "status": "OK"
 
-    except Exception as e:
-
-        print(
-            "Webhook錯誤:",
-            str(e)
-        )
-
-        return {
-            "ok": False
-        }
+    }
