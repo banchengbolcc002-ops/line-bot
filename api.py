@@ -1,375 +1,424 @@
-import html
-import json
-import logging
-import os
-import re
-from datetime import datetime, timezone
-from typing import Any
+# =====================================
+# LINE AI 關懷助理
+# FastAPI + LINE + Gemini + Google Sheet
+# =====================================
 
+from fastapi import FastAPI, Request
+import requests
 import gspread
-from fastapi import FastAPI, HTTPException, Request
-from google import genai
-from google.oauth2.service_account import Credentials
-from linebot.v3 import WebhookHandler
-from linebot.v3.exceptions import InvalidSignatureError
-from linebot.v3.messaging import (
-    ApiClient,
-    Configuration,
-    MessagingApi,
-    ReplyMessageRequest,
-    TextMessage,
+
+from oauth2client.service_account import ServiceAccountCredentials
+
+from datetime import datetime, timedelta
+
+import google.generativeai as genai
+
+import os
+import json
+
+# =====================================
+# 建立 FastAPI
+# =====================================
+
+app = FastAPI()
+
+# =====================================
+# LINE Access Token
+# =====================================
+
+CHANNEL_ACCESS_TOKEN = os.getenv(
+    "LINE_CHANNEL_ACCESS_TOKEN"
 )
-from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
+# =====================================
+# Gemini 設定
+# =====================================
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("church-deacon-ai")
-
-app = FastAPI(title="基督教會數位執事 AI")
-
-
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
-LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "").strip()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
-GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "").strip()
-GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "Sheet1").strip()
-GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
-
-LINE_CONFIGURATION = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
-LINE_HANDLER = WebhookHandler(LINE_CHANNEL_SECRET)
-
-QUICK_REPLY_MESSAGES = {
-    "你好",
-    "哈囉",
-    "嗨",
-    "hi",
-    "hello",
-    "test",
-    "測試",
-    "ping",
-    "平安",
-    "早安",
-    "午安",
-    "晚安",
-    "謝謝",
-    "感謝",
-}
-
-HIGH_RISK_KEYWORDS = {
-    "自殺",
-    "想死",
-    "不想活",
-    "活不下去",
-    "結束生命",
-}
-
-SCRIPTURE_KEYWORDS = {"經文", "今日經文", "聖經", "金句"}
-PRAYER_KEYWORDS = {"禱告", "代禱", "祈禱", "為我禱告"}
-
-conversation_memory: dict[str, list[dict[str, str]]] = {}
-
-
-def clean_text(value: Any) -> str:
-    """Normalize text and remove HTML/anchor pollution before sending to LINE."""
-    text = "" if value is None else str(value)
-    text = html.unescape(text)
-
-    text = re.sub(
-        r"<a\s+[^>]*href=[\"']?([^\"'\s>]+)[\"']?[^>]*>(.*?)</a>",
-        lambda match: f"{match.group(2).strip()} {match.group(1).strip()}".strip(),
-        text,
-        flags=re.IGNORECASE | re.DOTALL,
+genai.configure(
+    api_key=os.getenv(
+        "GEMINI_API_KEY"
     )
-    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
-    text = re.sub(r"</p\s*>", "\n", text, flags=re.IGNORECASE)
-    text = re.sub(r"<[^>]+>", "", text)
-    text = re.sub(r"[ \t]+\n", "\n", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+)
 
+# 修正模型名稱
 
-def now_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+model = genai.GenerativeModel(
+    "gemini-2.5-flash"
+)
 
+# =====================================
+# Google Sheet
+# =====================================
 
-def get_google_sheet():
-    if not GOOGLE_SHEET_ID or not GOOGLE_SERVICE_ACCOUNT_JSON:
-        return None
+scope = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
+google_key = json.loads(
+    os.environ["GOOGLE_KEY"]
+)
+
+creds = ServiceAccountCredentials.from_json_keyfile_dict(
+    google_key,
+    scope
+)
+
+client = gspread.authorize(creds)
+
+sheet = client.open(
+    "linebot-log"
+).worksheet(
+    "linebot-care"
+)
+
+# =====================================
+# 記憶功能
+# =====================================
+
+user_memory = {}
+
+# =====================================
+# Google Sheet紀錄
+# =====================================
+
+def log_to_sheet(
+    user_name,
+    msg,
+    reply,
+    intent
+):
 
     try:
-        service_account_info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
-        scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive",
-        ]
-        credentials = Credentials.from_service_account_info(
-            service_account_info,
-            scopes=scopes,
+
+        sheet.append_row([
+
+            str(
+                datetime.now()
+                + timedelta(hours=8)
+            ),
+
+            user_name,
+            msg,
+            reply,
+            intent
+
+        ])
+
+    except Exception as e:
+
+        print(
+            "Google Sheet 錯誤:",
+            str(e)
         )
-        client = gspread.authorize(credentials)
-        spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
-        return spreadsheet.worksheet(GOOGLE_SHEET_NAME)
-    except Exception:
-        logger.exception("Google Sheet initialization failed")
-        return None
 
+# =====================================
+# 回覆LINE
+# =====================================
 
-def write_google_sheet_log(
-    user_name: str,
-    message: str,
-    reply: str,
-    intent: str,
-) -> None:
-    worksheet = get_google_sheet()
-    if worksheet is None:
-        logger.warning("Google Sheet logging skipped: missing or invalid settings")
-        return
+def reply_to_line(
+    token,
+    text
+):
 
     try:
-        worksheet.append_row(
-            [
-                now_iso(),
-                clean_text(user_name),
-                clean_text(message),
-                clean_text(reply),
-                clean_text(intent),
-            ],
-            value_input_option="USER_ENTERED",
+
+        requests.post(
+
+            "https://api.line.me/v2/bot/message/reply",
+
+            headers={
+
+                "Authorization":
+                f"Bearer {CHANNEL_ACCESS_TOKEN}",
+
+                "Content-Type":
+                "application/json"
+
+            },
+
+            json={
+
+                "replyToken":
+                token,
+
+                "messages": [
+
+                    {
+                        "type": "text",
+                        "text": str(text)[:5000]
+                    }
+
+                ]
+
+            }
+
         )
-    except Exception:
-        logger.exception("Google Sheet append failed")
 
+    except Exception as e:
 
-def get_user_name(user_id: str) -> str:
-    if not user_id or not LINE_CHANNEL_ACCESS_TOKEN:
-        return "LINE 使用者"
-
-    try:
-        with ApiClient(LINE_CONFIGURATION) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            profile = line_bot_api.get_profile(user_id)
-            return clean_text(profile.display_name) or "LINE 使用者"
-    except Exception:
-        logger.exception("Get LINE user profile failed")
-        return "LINE 使用者"
-
-
-def remember_message(user_id: str, role: str, content: str) -> None:
-    if not user_id:
-        return
-
-    history = conversation_memory.setdefault(user_id, [])
-    history.append({"role": role, "content": clean_text(content)})
-    conversation_memory[user_id] = history[-10:]
-
-
-def get_memory_text(user_id: str) -> str:
-    history = conversation_memory.get(user_id, [])
-    if not history:
-        return "目前沒有既有對話紀錄。"
-
-    lines = []
-    for item in history[-10:]:
-        role = "使用者" if item["role"] == "user" else "數位執事 AI"
-        lines.append(f"{role}: {item['content']}")
-    return "\n".join(lines)
-
-
-def is_quick_reply(message: str) -> bool:
-    normalized = message.strip().lower()
-    return normalized in QUICK_REPLY_MESSAGES
-
-
-def detect_high_risk(message: str) -> bool:
-    return any(keyword in message for keyword in HIGH_RISK_KEYWORDS)
-
-
-def detect_intent(message: str) -> str:
-    normalized = message.strip().lower()
-
-    if detect_high_risk(message):
-        return "高風險訊息"
-    if normalized in QUICK_REPLY_MESSAGES:
-        return "快速問候"
-    if any(keyword in message for keyword in SCRIPTURE_KEYWORDS):
-        return "今日經文"
-    if any(keyword in message for keyword in PRAYER_KEYWORDS):
-        return "禱告代禱"
-    return "Gemini 回覆"
-
-
-def quick_greeting_reply() -> str:
-    return clean_text(
-        """
-        🌿 平安！
-
-        我是基督教會數位執事 AI。
-
-        很高興與您相遇。
-
-        願上帝賜福您今天滿有平安與喜樂。
-        """
-    )
-
-
-def scripture_reply() -> str:
-    return clean_text(
-        """
-        📖 今日經文
-
-        詩篇23:1
-
-        耶和華是我的牧者，
-        我必不致缺乏。
-        """
-    )
-
-
-def prayer_reply(user_name: str) -> str:
-    return clean_text(
-        f"""
-        🙏 代禱文
-
-        親愛的天父，
-
-        感謝祢看顧 {user_name}，也知道此刻心中的需要、壓力、盼望與等待。
-        求祢用祢的平安保守他的心懷意念，賜下智慧面對今天的事情，
-        也賜下力量走過正在經歷的困難。
-
-        主啊，若他心中有憂慮，求祢安慰；
-        若他身體疲乏，求祢扶持；
-        若他需要方向，求祢引導；
-        若他正在等候，求祢堅固他的信心。
-
-        願祢的愛充滿他的家庭、工作、服事與人際關係，
-        使他在每一步都經歷祢同在的恩典。
-
-        奉主耶穌基督的名禱告，阿們。
-        """
-    )
-
-
-def high_risk_reply() -> str:
-    return clean_text(
-        """
-        我很在意你現在的安全。若你正有傷害自己的念頭，請立刻聯絡身邊可信任的人，或直接撥打以下資源：
-
-        1925 安心專線
-        1995 生命線
-
-        若你已經處於立即危險中，請立刻撥打當地緊急電話或前往最近的急診。
-        你不需要一個人承受，現在先讓真人陪你一起度過這一刻。
-        """
-    )
-
-
-def gemini_reply(user_id: str, user_name: str, message: str) -> str:
-    if not GEMINI_API_KEY:
-        return "目前 Gemini 尚未設定完成，請稍後再試。"
-
-    try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        prompt = f"""
-你是「基督教會數位執事 AI」。
-
-請用繁體中文回覆，語氣要溫暖、謙和、清楚、有牧養關懷，但不要假裝自己是牧師或真人。
-可以提供教會行政、聚會提醒、關懷問候、信仰陪伴、禱告方向與一般資訊協助。
-若遇到醫療、法律、財務或高風險心理危機，請提醒使用者尋求合格專業或緊急協助。
-
-禁止輸出 HTML 標籤。若要提供連結，請直接輸出完整網址，例如 https://example.com。
-
-使用者名稱：{user_name}
-
-最近對話記憶：
-{get_memory_text(user_id)}
-
-使用者最新訊息：
-{message}
-"""
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
+        print(
+            "LINE回覆錯誤:",
+            str(e)
         )
-        reply = getattr(response, "text", "") or "我收到您的訊息了，願主賜您平安。"
-        return clean_text(reply)
-    except Exception:
-        logger.exception("Gemini response failed")
-        return "抱歉，目前 AI 回覆服務暫時忙碌中。請稍後再試，願主賜您平安。"
 
+# =====================================
+# 取得使用者名稱
+# =====================================
 
-def create_reply(user_id: str, user_name: str, message: str) -> tuple[str, str]:
-    message = clean_text(message)
-    intent = detect_intent(message)
-
-    if intent == "高風險訊息":
-        return high_risk_reply(), intent
-    if intent == "快速問候":
-        return quick_greeting_reply(), intent
-    if intent == "今日經文":
-        return scripture_reply(), intent
-    if intent == "禱告代禱":
-        return prayer_reply(user_name), intent
-
-    remember_message(user_id, "user", message)
-    reply = gemini_reply(user_id, user_name, message)
-    remember_message(user_id, "assistant", reply)
-    return reply, intent
-
-
-def reply_to_line(reply_token: str, reply: str) -> None:
-    if not LINE_CHANNEL_ACCESS_TOKEN:
-        logger.error("LINE_CHANNEL_ACCESS_TOKEN is missing")
-        return
+def get_user_name(
+    user_id
+):
 
     try:
-        with ApiClient(LINE_CONFIGURATION) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=reply_token,
-                    messages=[TextMessage(text=clean_text(reply)[:5000])],
-                )
+
+        url = (
+            f"https://api.line.me/v2/bot/profile/{user_id}"
+        )
+
+        headers = {
+
+            "Authorization":
+            f"Bearer {CHANNEL_ACCESS_TOKEN}"
+
+        }
+
+        res = requests.get(
+            url,
+            headers=headers
+        )
+
+        if res.status_code == 200:
+
+            data = res.json()
+
+            return data.get(
+                "displayName",
+                user_id
             )
-    except Exception:
-        logger.exception("LINE reply failed")
 
+        return user_id
 
-@app.get("/")
-def root() -> dict[str, str]:
-    return {"status": "LINE BOT RUNNING"}
+    except:
 
+        return user_id
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "OK"}
+# =====================================
+# Gemini聊天
+# =====================================
 
-
-@app.post("/callback")
-async def callback(request: Request) -> dict[str, str]:
-    if not LINE_CHANNEL_SECRET:
-        raise HTTPException(status_code=500, detail="LINE_CHANNEL_SECRET is missing")
-
-    signature = request.headers.get("X-Line-Signature", "")
-    body = (await request.body()).decode("utf-8")
+def ask_gemini(
+    user_name,
+    question
+):
 
     try:
-        LINE_HANDLER.handle(body, signature)
-    except InvalidSignatureError as exc:
-        raise HTTPException(status_code=400, detail="Invalid LINE signature") from exc
-    except Exception as exc:
-        logger.exception("LINE webhook handling failed")
-        raise HTTPException(status_code=500, detail="Webhook handling failed") from exc
 
-    return {"status": "OK"}
+        if user_name not in user_memory:
 
+            user_memory[user_name] = []
 
-@LINE_HANDLER.add(MessageEvent, message=TextMessageContent)
-def handle_text_message(event: MessageEvent) -> None:
-    user_id = getattr(event.source, "user_id", "") or ""
-    user_name = get_user_name(user_id)
-    message = clean_text(event.message.text)
+        history = user_memory[user_name][-6:]
 
-    reply, intent = create_reply(user_id, user_name, message)
-    reply_to_line(event.reply_token, reply)
-    write_google_sheet_log(user_name, message, reply, intent)
+        prompt = f"""
+你是一位教會AI關懷助理。
+
+規則：
+
+1. 使用繁體中文
+2. 口氣溫暖
+3. 提供鼓勵
+4. 回答簡潔
+
+聊天紀錄：
+
+{chr(10).join(history)}
+
+使用者問題：
+
+{question}
+"""
+
+        response = model.generate_content(
+            prompt
+        )
+
+        answer = response.text
+
+        user_memory[user_name].append(
+            f"使用者:{question}"
+        )
+
+        user_memory[user_name].append(
+            f"AI:{answer}"
+        )
+
+        return answer
+
+    except Exception as e:
+
+        return (
+            "AI服務暫時無法使用\n\n"
+            + str(e)
+        )
+
+# =====================================
+# 高風險關懷
+# =====================================
+
+def is_danger_message(msg):
+
+    keywords = [
+
+        "自殺",
+        "想死",
+        "不想活",
+        "活不下去",
+        "結束生命"
+
+    ]
+
+    return any(
+        k in msg
+        for k in keywords
+    )
+
+# =====================================
+# 訊息處理
+# =====================================
+
+def handle_message(
+    msg,
+    user_name
+):
+
+    msg = msg.strip()
+
+    if is_danger_message(msg):
+
+        return (
+
+            "💛 你很重要。\n\n"
+            "請立即聯絡家人、朋友或牧者。\n\n"
+            "1925安心專線\n"
+            "1995生命線",
+
+            "danger"
+
+        )
+
+    commands = {
+
+        "你好": (
+            "🌿 平安！",
+            "hello"
+        ),
+
+        "經文": (
+            "📖 詩篇23:1\n耶和華是我的牧者，我必不致缺乏。",
+            "bible"
+        ),
+
+        "禱告": (
+            "🙏 願神賜福你。",
+            "prayer"
+        )
+
+    }
+
+    if msg in commands:
+
+        return commands[msg]
+
+    ai_reply = ask_gemini(
+        user_name,
+        msg
+    )
+
+    return (
+        ai_reply,
+        "gemini"
+    )
+
+# =====================================
+# LINE Webhook
+# =====================================
+
+@app.post("/reply")
+async def reply(
+    request: Request
+):
+
+    try:
+
+        body = await request.json()
+
+        events = body.get(
+            "events",
+            []
+        )
+
+        if not events:
+
+            return {
+                "ok": True
+            }
+
+        event = events[0]
+
+        if event.get("type") != "message":
+
+            return {
+                "ok": True
+            }
+
+        if event["message"].get("type") != "text":
+
+            return {
+                "ok": True
+            }
+
+        msg = event["message"]["text"]
+
+        user_id = event["source"].get(
+            "userId",
+            ""
+        )
+
+        token = event["replyToken"]
+
+        user_name = get_user_name(
+            user_id
+        )
+
+        reply_text, intent = handle_message(
+            msg,
+            user_name
+        )
+
+        reply_to_line(
+            token,
+            reply_text
+        )
+
+        log_to_sheet(
+            user_name,
+            msg,
+            reply_text,
+            intent
+        )
+
+        return {
+            "ok": True
+        }
+
+    except Exception as e:
+
+        print(
+            "Webhook錯誤:",
+            str(e)
+        )
+
+        return {
+            "ok": False
+        }
