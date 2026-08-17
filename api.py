@@ -10,13 +10,15 @@ import requests
 import os
 
 # ==========================================
-# 建立 FastAPI
+# FastAPI
 # ==========================================
 
 app = FastAPI()
 
 # ==========================================
 # LINE TOKEN
+# Render 環境變數名稱：
+# LINE_CHANNEL_ACCESS_TOKEN
 # ==========================================
 
 LINE_TOKEN = os.getenv(
@@ -127,7 +129,11 @@ def is_danger_message(msg):
 
 def handle_message(msg):
 
-    msg = msg.strip()
+    msg = msg.strip().lower()
+
+    # ==========================
+    # 高風險關懷
+    # ==========================
 
     if is_danger_message(msg):
 
@@ -141,12 +147,17 @@ def handle_message(msg):
 
 1995 生命線
 
-並尋求牧者、
-家人或朋友的協助。
+並聯絡牧者、
+家人或朋友。
 
 🙏 願神保守您。
 
 """
+
+    # ==========================
+    # 固定回覆
+    # 不耗 AI 額度
+    # ==========================
 
     commands = {
 
@@ -158,23 +169,39 @@ def handle_message(msg):
 
 很高興與您相遇。
 
-如果您有：
+🙏 有代禱需要
 
-🙏 禱告需求
+📖 有聖經問題
 
-📖 聖經問題
-
-❤️ 生活困擾
+❤️ 有生活困擾
 
 都歡迎與我分享。
 
 """,
 
+        "hi": """
+👋 Hi！
+願神祝福您。
+""",
+
+        "hello": """
+👋 Hello！
+願主與您同在。
+""",
+
+        "哈囉": """
+😊 哈囉！
+很高興見到您。
+""",
+
+        "嗨": """
+👋 嗨！
+願主賜福您。
+""",
+
         "平安": """
 
-🌿 願主耶穌基督的平安與您同在。
-
-願神保守您與您的家人。
+🌿 願主耶穌的平安與您同在。
 
 🙏 阿們。
 
@@ -203,7 +230,7 @@ def handle_message(msg):
 求祢賜給我們平安、
 智慧與力量。
 
-願祢保守我們的家庭、
+保守我們的家庭、
 工作與健康。
 
 奉主耶穌基督的名禱告。
@@ -212,109 +239,4 @@ def handle_message(msg):
 
 """,
 
-        "測試": """
-
-✅ 系統運作正常
-
-基督教會 AI 執事
-
-在線服務中
-
-""",
-
-        "test": """
-
-✅ 系統運作正常
-
-基督教會 AI 執事
-
-在線服務中
-
-""",
-
-        "hi": "👋 Hi！願神祝福您。",
-
-        "hello": "👋 Hello！願神與您同在。",
-
-        "哈囉": "😊 哈囉！很高興見到您。",
-
-        "嗨": "👋 嗨！願主賜福您。",
-
-        "早安": "☀️ 早安！願神祝福您今天。",
-
-        "午安": "🌤️ 午安！願您平安喜樂。",
-
-        "晚安": "🌙 晚安！願主保守您。",
-
-        "謝謝": "❤️ 不客氣，很高興能幫助您。",
-
-        "感謝": "🙏 願神祝福您。"
-
-    }
-
-    if msg in commands:
-
-        return commands[msg]
-
-    return """
-
-🌿 基督教會 AI 執事
-
-已收到您的訊息。
-
-目前為穩定版執事系統。
-
-若您需要：
-
-🙏 禱告
-
-📖 經文
-
-❤️ 關懷
-
-歡迎直接輸入關鍵字。
-
-"""
-
-# ==========================================
-# LINE WEBHOOK
-# ==========================================
-
-@app.post("/callback")
-async def callback(request: Request):
-
-    body = await request.json()
-
-    events = body.get(
-        "events",
-        []
-    )
-
-    for event in events:
-
-        if event.get("type") != "message":
-
-            continue
-
-        if event["message"].get("type") != "text":
-
-            continue
-
-        user_msg = event["message"]["text"]
-
-        reply_token = event["replyToken"]
-
-        reply_text = handle_message(
-            user_msg
-        )
-
-        reply_to_line(
-            reply_token,
-            reply_text
-        )
-
-    return {
-
-        "status": "OK"
-
-    }
+        "阿
