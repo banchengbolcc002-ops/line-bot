@@ -392,8 +392,8 @@ def gemini_reply(user_id: str, user_name: str, message: str) -> str:
                     }
                 ],
                 "generationConfig": {
-                    "maxOutputTokens": 260,
-                    "temperature": 0.4,
+                    "maxOutputTokens": 1000,
+                    "temperature": 0.7,
                 },
             },
             timeout=20,
