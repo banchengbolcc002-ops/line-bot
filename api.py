@@ -7,9 +7,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 import gspread
+import requests
 from fastapi import FastAPI, HTTPException, Request
-from google import genai
-from google.genai import types
 from google.oauth2.service_account import Credentials
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
@@ -327,12 +326,26 @@ def fixed_reply_for_intent(intent: str) -> str | None:
     return None
 
 
+def extract_gemini_text(data: dict[str, Any]) -> str:
+    candidates = data.get("candidates", [])
+    if not candidates:
+        return ""
+
+    content = candidates[0].get("content", {})
+    parts = content.get("parts", [])
+    texts = []
+    for part in parts:
+        text = part.get("text", "")
+        if text:
+            texts.append(text)
+    return "\n".join(texts).strip()
+
+
 def gemini_reply(user_id: str, user_name: str, message: str) -> str:
     if not GEMINI_API_KEY:
         return "目前 AI 服務尚未設定完成。願主賜您平安。"
 
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
         prompt = f"""
 你是「基督教會 AI 執事」（Christian Church Digital Deacon AI）。
 請以一位服事教會超過30年的資深牧師之牧養經驗、聖經關懷與溫柔勸勉作為回答視角。
@@ -364,16 +377,38 @@ def gemini_reply(user_id: str, user_name: str, message: str) -> str:
 使用者訊息：
 {message}
 """
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                max_output_tokens=260,
-                temperature=0.4,
-            ),
+        api_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{GEMINI_MODEL}:generateContent"
         )
-        reply = getattr(response, "text", "") or "我收到您的訊息了。願主賜您平安。"
+        response = requests.post(
+            api_url,
+            params={"key": GEMINI_API_KEY},
+            json={
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": prompt}],
+                    }
+                ],
+                "generationConfig": {
+                    "maxOutputTokens": 260,
+                    "temperature": 0.4,
+                },
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        data = response.json()
+        reply = extract_gemini_text(data) or "我收到您的訊息了。願主賜您平安。"
         return clean_text(reply)[:500]
+    except requests.HTTPError as exc:
+        status_code = exc.response.status_code if exc.response is not None else None
+        error_text = exc.response.text.lower() if exc.response is not None else str(exc).lower()
+        logger.exception("Gemini HTTP response failed")
+        if status_code == 429 or "quota" in error_text or "resource_exhausted" in error_text or "retry_delay" in error_text:
+            return "目前 AI 額度暫時受限。您仍可以輸入「禱告」或「經文」，我會立即回覆。"
+        return "目前 AI 回覆暫時忙碌中。願主賜您平安，請稍後再試。"
     except Exception as exc:
         error_text = str(exc).lower()
         logger.exception("Gemini response failed")
