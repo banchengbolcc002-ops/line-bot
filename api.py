@@ -454,9 +454,10 @@ def root() -> dict[str, str]:
     return {"status": "LINE BOT RUNNING"}
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health() -> dict[str, str]:
     return {"status": "OK"}
+
 
 
 @app.post("/callback")
