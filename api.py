@@ -462,18 +462,20 @@ def health() -> dict[str, str]:
 @app.post("/callback")
 async def callback(request: Request) -> dict[str, str]:
     if not LINE_CHANNEL_SECRET:
-        raise HTTPException(status_code=500, detail="LINE_CHANNEL_SECRET is missing")
+        logger.error("LINE_CHANNEL_SECRET is missing")
+        return {"status": "OK"}
 
     signature = request.headers.get("X-Line-Signature", "")
     body = (await request.body()).decode("utf-8")
 
     try:
         LINE_HANDLER.handle(body, signature)
-    except InvalidSignatureError as exc:
-        raise HTTPException(status_code=400, detail="Invalid LINE signature") from exc
-    except Exception as exc:
+    except InvalidSignatureError:
+        logger.exception("Invalid LINE signature")
+        return {"status": "OK"}
+    except Exception:
         logger.exception("LINE webhook handling failed")
-        raise HTTPException(status_code=500, detail="Webhook handling failed") from exc
+        return {"status": "OK"}
 
     return {"status": "OK"}
 
@@ -481,9 +483,17 @@ async def callback(request: Request) -> dict[str, str]:
 @LINE_HANDLER.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event: MessageEvent) -> None:
     user_id = getattr(event.source, "user_id", "") or ""
-    user_name = get_user_name(user_id)
-    message = clean_text(event.message.text)
+    user_name = "LINE 使用者"
+    message = ""
+    reply = "目前系統暫時忙碌中。願主賜您平安，請稍後再試。"
+    intent = "系統錯誤"
 
-    reply, intent = create_reply(user_id, user_name, message)
+    try:
+        user_name = get_user_name(user_id)
+        message = clean_text(event.message.text)
+        reply, intent = create_reply(user_id, user_name, message)
+    except Exception:
+        logger.exception("Create LINE reply failed")
+
     reply_to_line(event.reply_token, reply)
     write_google_sheet_log(user_name, message, reply, intent)
