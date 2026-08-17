@@ -20,7 +20,7 @@ app = FastAPI()
 # ==========================================
 
 LINE_TOKEN = os.getenv(
-    "LINE_CHANNEL_ACCESS_TOKEN"
+    "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU="
 )
 
 # ==========================================
