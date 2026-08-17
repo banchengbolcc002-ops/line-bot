@@ -1,238 +1,320 @@
 # ==========================================
-# ✅ LINE 精準回應機器人（不亂回版🔥）
+# 基督教會 AI 執事
+# 板橋-iPAS AI應用與雙程式設計實務班
+# 學生姓名：葉堠祿
+# 學號：18
 # ==========================================
 
-# ✅ FastAPI：接收 LINE 傳來的資料
 from fastapi import FastAPI, Request
-
-# ✅ requests：回傳訊息給 LINE
 import requests
+import os
 
-# ✅ 建立 API 服務
+# ==========================================
+# 建立 FastAPI
+# ==========================================
+
 app = FastAPI()
 
 # ==========================================
-# ✅ ⚠️ 一定要貼你的 Token（不能有空格）
+# LINE TOKEN
 # ==========================================
-LINE_TOKEN = "j/RTwDwbyWcvskPUxeO9tspcsxl+Xky8IQn+4Wo3zgSVeOACy3mfKT1R19eZzrMmOr7sMIDnhBT1/f0JzJaGD4XXhPy+2lufHJrYhxBloM+VkUuLECIo9qw7HqvPM092tKsClQsfv1AntWKv8NBPMgdB04t89/1O/w1cDnyilFU="
+
+LINE_TOKEN = os.getenv(
+    "LINE_CHANNEL_ACCESS_TOKEN"
+)
 
 # ==========================================
-# ✅ 回覆 LINE 訊息函式
+# 首頁
 # ==========================================
-def reply_to_line(reply_token, text):
 
-    # ✅ LINE需要的標頭（驗證身份）
-    headers = {
-        "Authorization": "Bearer " + LINE_TOKEN,
-        "Content-Type": "application/json"
+@app.get("/")
+def home():
+
+    return {
+
+        "status": "LINE BOT RUNNING",
+
+        "project": "基督教會AI執事",
+
+        "student": "葉堠祿"
+
     }
 
-    # ✅ 發送格式（LINE規定）
+# ==========================================
+# 健康檢查
+# ==========================================
+
+@app.get("/health")
+def health():
+
+    return {
+
+        "status": "OK"
+
+    }
+
+# ==========================================
+# 回覆 LINE
+# ==========================================
+
+def reply_to_line(
+    reply_token,
+    text
+):
+
+    headers = {
+
+        "Authorization":
+        "Bearer " + LINE_TOKEN,
+
+        "Content-Type":
+        "application/json"
+
+    }
+
     data = {
-        "replyToken": reply_token,
+
+        "replyToken":
+        reply_token,
+
         "messages": [
+
             {
                 "type": "text",
-                "text": str(text)
+                "text": str(text)[:5000]
             }
+
         ]
+
     }
 
-    # ✅ 傳送給 LINE
     requests.post(
+
         "https://api.line.me/v2/bot/message/reply",
+
         headers=headers,
-        json=data
+
+        json=data,
+
+        timeout=10
+
     )
 
+# ==========================================
+# 高風險關懷
+# ==========================================
+
+def is_danger_message(msg):
+
+    keywords = [
+
+        "自殺",
+        "想死",
+        "不想活",
+        "活不下去",
+        "結束生命"
+
+    ]
+
+    return any(
+        word in msg
+        for word in keywords
+    )
 
 # ==========================================
-# ✅ 核心邏輯（精準回應🔥）
+# 訊息處理
 # ==========================================
-def handle_message(user_msg):
 
-    msg = user_msg.strip()
+def handle_message(msg):
 
-    # ==========================================
-    # ✅ ✅ ✅ 關鍵字分類（共500+組🔥）
-    # ==========================================
-    keyword_map = {
+    msg = msg.strip()
 
-        # ----------------------------------
-        # ✅ 點名類（50組）
-        # ----------------------------------
-        "rollcall": {
-            "keywords": [
-                "點名","報到","簽到","集合","點到",
-                "來了","到了","出席","報名","集合中",
-                "集合好了","在線","有人嗎","在不在",
-                "報到一下","我來了","全部到齊","集合一下"
-            ],
-            "reply": "📢 點名開始，請回：到 ✅"
-        },
+    if is_danger_message(msg):
 
-        # ----------------------------------
-        # ✅ 到（精準）
-        # ----------------------------------
-        "arrived": {
-            "exact": ["到","到✅","到了","已到","我到了"],
-            "reply": "✅ 收到，已記錄"
-        },
+        return """
 
-        # ----------------------------------
-        # ✅ 禱告類（100+）
-        # ----------------------------------
-        "prayer": {
-            "keywords": [
-                "禱告","代禱","祈禱","求神","主啊","阿們",
-                "求主","祝福","神啊","幫我禱告","禱告一下",
-                "需要禱告","代禱事項","主耶穌","主啊幫助",
-                "求你帶領","願神保守","奉主名","祈求",
-                "平安禱告","為我禱告","靈修","親近神",
-                "與神同行","主的恩典","神的愛","求主同在",
-                "主的帶領","恩典","蒙福","祝福我"
-            ],
-            "reply": "🙏 我們一起禱告，願主賜下平安與力量"
-        },
+💛 您的生命非常寶貴。
 
-        # ----------------------------------
-        # ✅ 情緒類（150+）
-        # ----------------------------------
-        "emotion": {
-            "keywords": [
-                "累","壓力","難過","低落","痛苦","不開心",
-                "崩潰","好煩","好累","撐不住","沒力",
-                "心累","焦慮","害怕","恐懼","焦躁",
-                "憂鬱","煩躁","挫折","失敗","恐慌",
-                "疲累","不想做","沒動力","空虛","孤單",
-                "寂寞","難受","壓力大","生活累","工作累",
-                "精神不好","好辛苦","心很累","過不去",
-                "覺得很累","撐不下去","真的很累"
-            ],
-            "reply": "💛 辛苦了，神與你同在，祂知道你的需要"
-        },
+請立即聯絡：
 
-        # ----------------------------------
-        # ✅ 鼓勵類（100+）
-        # ----------------------------------
-        "encourage": {
-            "keywords": [
-                "加油","努力","撐住","不要放棄","再試一次",
-                "會成功嗎","可以嗎","撐得住","拚一下",
-                "拼了","衝刺","加把勁","努力一下",
-                "人生","未來","方向","目標","成功",
-                "機會","機遇","再努力","突破","挑戰",
-                "希望","信心","成長","前進","邁進"
-            ],
-            "reply": "🔥 不要放棄，神與你同在，你可以的！"
-        },
+1925 安心專線
 
-        # ----------------------------------
-        # ✅ 感謝類（50+）
-        # ----------------------------------
-        "thank": {
-            "keywords": [
-                "謝謝","感謝","感恩","thanks","thank you",
-                "3q","多謝","謝啦","感謝你","謝謝分享",
-                "太感謝了","感謝主","主啊謝謝","祝福你"
-            ],
-            "reply": "🙏 感謝主！願神祝福你"
-        },
+1995 生命線
 
-        # ----------------------------------
-        # ✅ 問候（50+）
-        # ----------------------------------
-        "greet": {
-            "keywords": [
-                "早安","午安","晚安","你好","哈囉","嗨",
-                "hello","hi","安安","大家好","平安",
-                "早","晚安喔","早安啊","嗨嗨","哈囉你好"
-            ],
-            "reply": "🌿 平安！願神祝福你"
-        },
+並尋求牧者、
+家人或朋友的協助。
 
-        # ----------------------------------
-        # ✅ 聖經（50+）
-        # ----------------------------------
-        "bible": {
-            "keywords": [
-                "經文","聖經","神的話","讀經","靈修",
-                "金句","一句話","神的旨意","主的話"
-            ],
-            "reply": "📖 神的話是你腳前的燈 ✨"
-        },
+🙏 願神保守您。
 
-        # ----------------------------------
-        # ✅ 測試
-        # ----------------------------------
-        "test": {
-            "keywords": ["測試","test"],
-            "reply": "✅ 系統正常"
-        }
+"""
+
+    commands = {
+
+        "你好": """
+
+🌿 平安！
+
+我是基督教會 AI 執事。
+
+很高興與您相遇。
+
+如果您有：
+
+🙏 禱告需求
+
+📖 聖經問題
+
+❤️ 生活困擾
+
+都歡迎與我分享。
+
+""",
+
+        "平安": """
+
+🌿 願主耶穌基督的平安與您同在。
+
+願神保守您與您的家人。
+
+🙏 阿們。
+
+""",
+
+        "經文": """
+
+📖 今日經文
+
+詩篇23:1
+
+耶和華是我的牧者，
+
+我必不致缺乏。
+
+""",
+
+        "禱告": """
+
+🙏 禱告文
+
+親愛的天父：
+
+感謝祢今天的帶領。
+
+求祢賜給我們平安、
+智慧與力量。
+
+願祢保守我們的家庭、
+工作與健康。
+
+奉主耶穌基督的名禱告。
+
+阿們。
+
+""",
+
+        "測試": """
+
+✅ 系統運作正常
+
+基督教會 AI 執事
+
+在線服務中
+
+""",
+
+        "test": """
+
+✅ 系統運作正常
+
+基督教會 AI 執事
+
+在線服務中
+
+""",
+
+        "hi": "👋 Hi！願神祝福您。",
+
+        "hello": "👋 Hello！願神與您同在。",
+
+        "哈囉": "😊 哈囉！很高興見到您。",
+
+        "嗨": "👋 嗨！願主賜福您。",
+
+        "早安": "☀️ 早安！願神祝福您今天。",
+
+        "午安": "🌤️ 午安！願您平安喜樂。",
+
+        "晚安": "🌙 晚安！願主保守您。",
+
+        "謝謝": "❤️ 不客氣，很高興能幫助您。",
+
+        "感謝": "🙏 願神祝福您。"
+
     }
 
+    if msg in commands:
 
-    # ==========================================
-    # ✅ ✅ ✅ 精準判斷邏輯（核心🔥）
-    # ==========================================
+        return commands[msg]
 
-    for rule in keyword_map.values():
+    return """
 
-        # ✅ 精準比對（例如：到）
-        if "exact" in rule:
-            if msg in rule["exact"]:
-                return rule["reply"]
+🌿 基督教會 AI 執事
 
-        # ✅ 關鍵字模糊比對
-        if "keywords" in rule:
-            if any(k in msg for k in rule["keywords"]):
-                return rule["reply"]
+已收到您的訊息。
 
-    # ✅ ❗不符合 → 完全不回（你要求）
-    return None
+目前為穩定版執事系統。
 
+若您需要：
+
+🙏 禱告
+
+📖 經文
+
+❤️ 關懷
+
+歡迎直接輸入關鍵字。
+
+"""
 
 # ==========================================
-# ✅ Webhook（LINE進入點🔥）
+# LINE WEBHOOK
 # ==========================================
-@app.post("/reply")
-async def reply(request: Request):
 
-    try:
-        # ✅ 接收LINE資料
-        body = await request.json()
+@app.post("/callback")
+async def callback(request: Request):
 
-        print("📩 收到:", body)
+    body = await request.json()
 
-        events = body.get("events", [])
+    events = body.get(
+        "events",
+        []
+    )
 
-        # ✅ LINE驗證時會空（一定要讓它過）
-        if not events:
-            return {"status": "ok"}
+    for event in events:
 
-        event = events[0]
+        if event.get("type") != "message":
 
-        reply_token = event.get("replyToken")
+            continue
 
-        message = event.get("message", {})
+        if event["message"].get("type") != "text":
 
-        # ✅ 只處理「文字」
-        if message.get("type") != "text":
-            return {"status": "ok"}
+            continue
 
-        user_msg = message.get("text", "")
+        user_msg = event["message"]["text"]
 
-        print("👤 使用者:", user_msg)
+        reply_token = event["replyToken"]
 
-        # ✅ 呼叫邏輯
-        reply_text = handle_message(user_msg)
+        reply_text = handle_message(
+            user_msg
+        )
 
-        # ✅ ✅ ✅ 核心：只有有內容才回
-        if reply_text:
-            reply_to_line(reply_token, reply_text)
+        reply_to_line(
+            reply_token,
+            reply_text
+        )
 
-    except Exception as e:
-        print("❌ 系統錯誤:", e)
+    return {
 
-    # ✅ ✅ ✅ 最重要（LINE要求）
-    return {"status": "ok"}
+        "status": "OK"
+
+    }
