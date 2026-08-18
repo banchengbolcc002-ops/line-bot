@@ -400,8 +400,11 @@ def gemini_reply(user_id: str, user_name: str, message: str) -> str:
         )
         response.raise_for_status()
         data = response.json()
+        logger.info(json.dumps(data, ensure_ascii=False, indent=2))
         reply = extract_gemini_text(data) or "我收到您的訊息了。願主賜您平安。"
         return clean_text(reply)[:500]
+
+    
     except requests.HTTPError as exc:
         status_code = exc.response.status_code if exc.response is not None else None
         error_text = exc.response.text.lower() if exc.response is not None else str(exc).lower()
