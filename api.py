@@ -127,7 +127,7 @@ def get_google_sheet():
             scopes=scopes,
         )
         client = gspread.authorize(credentials)
-        spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
+        spreadsheet = client.open("linebot-log")
         logger.info(f"GOOGLE_SHEET_ID={GOOGLE_SHEET_ID}")
         logger.info(f"GOOGLE_SHEET_NAME={GOOGLE_SHEET_NAME}")
         
