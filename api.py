@@ -3,7 +3,8 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+
 from typing import Any
 
 import gspread
@@ -109,7 +110,10 @@ def normalize_message(message: str) -> str:
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+taiwan_tz = timezone(timedelta(hours=8))
+
+return datetime.now(taiwan_tz).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def get_google_sheet():
