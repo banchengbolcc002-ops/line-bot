@@ -170,8 +170,11 @@ def get_user_name(user_id: str) -> str:
     try:
         with ApiClient(LINE_CONFIGURATION) as api_client:
             line_bot_api = MessagingApi(api_client)
+            
             profile = line_bot_api.get_profile(user_id)
+            logger.info(f"USER_NAME={profile.display_name}")
             return clean_text(profile.display_name) or "LINE 使用者"
+
     except Exception:
         logger.exception("Get LINE user profile failed")
         return "LINE 使用者"
@@ -404,7 +407,7 @@ def gemini_reply(user_id: str, user_name: str, message: str) -> str:
                     "temperature": 0.7,
                 },
             },
-            timeout=20,
+            timeout=60,
         )
         response.raise_for_status()
         data = response.json()
