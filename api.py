@@ -128,6 +128,9 @@ def get_google_sheet():
         )
         client = gspread.authorize(credentials)
         spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
+        logger.info(f"GOOGLE_SHEET_ID={GOOGLE_SHEET_ID}")
+        logger.info(f"GOOGLE_SHEET_NAME={GOOGLE_SHEET_NAME}")
+        
         return spreadsheet.worksheet(GOOGLE_SHEET_NAME)
     except Exception:
         logger.exception("Google Sheet initialization failed")
