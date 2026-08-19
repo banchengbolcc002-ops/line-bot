@@ -110,9 +110,7 @@ def normalize_message(message: str) -> str:
 
 
 def now_iso() -> str:
-
 taiwan_tz = timezone(timedelta(hours=8))
-
 return datetime.now(taiwan_tz).strftime("%Y-%m-%d %H:%M:%S")
 
 
