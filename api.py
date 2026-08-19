@@ -402,7 +402,9 @@ def gemini_reply(user_id: str, user_name: str, message: str) -> str:
         data = response.json()
         logger.info(json.dumps(data, ensure_ascii=False, indent=2))
         reply = extract_gemini_text(data) or "我收到您的訊息了。願主賜您平安。"
-        return clean_text(reply)[:500]
+        final_reply = clean_text(reply)
+        logger.info(final_reply)
+        return final_reply
 
     
     except requests.HTTPError as exc:
