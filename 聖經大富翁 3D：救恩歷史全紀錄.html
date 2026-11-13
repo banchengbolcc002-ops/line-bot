@@ -1,0 +1,2239 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>聖經大富翁 3D：救恩歷史全紀錄</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Noto+Serif+TC:wght@700;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Noto Sans TC', sans-serif;
+      background: linear-gradient(180deg, #0c4a6e 0%, #0369a1 40%, #38bdf8 100%);
+    }
+    .serif-title {
+      font-family: 'Noto Serif TC', serif;
+    }
+    button {
+      touch-action: manipulation;
+      cursor: pointer;
+      transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s ease;
+    }
+    button:active:not(:disabled) {
+      transform: scale(0.94);
+    }
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    /* 3D 畫布與標籤投影層 */
+    #three-container {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      touch-action: none;
+    }
+    #projection-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    /* 地理名稱與棋盤地標浮動標籤 */
+    .geo-label {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      color: #e0f2fe;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      text-shadow: 0 2px 5px rgba(2, 6, 23, 0.95), 0 0 2px #0284c7;
+      white-space: nowrap;
+      opacity: 0.9;
+    }
+    .tile-tag {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      background: rgba(15, 23, 42, 0.84);
+      color: #fefce8;
+      border: 1.5px solid rgba(250, 204, 21, 0.75);
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-size: 10px;
+      font-weight: 800;
+      white-space: nowrap;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+    }
+    .tile-tag.owner-0 { background: rgba(29, 78, 216, 0.92); border-color: #93c5fd; }
+    .tile-tag.owner-1 { background: rgba(190, 18, 60, 0.92); border-color: #fda4af; }
+
+    /* 飄字特效 */
+    @keyframes floatScore {
+      0% { opacity: 0; transform: translate(-50%, 6px) scale(0.75); }
+      20% { opacity: 1; transform: translate(-50%, -12px) scale(1.12); }
+      85% { opacity: 1; transform: translate(-50%, -44px) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -62px) scale(0.95); }
+    }
+    .float-text {
+      position: absolute;
+      font-size: 15px;
+      font-weight: 900;
+      color: #fde047;
+      text-shadow: 0 2px 6px #000, 0 0 8px rgba(234, 179, 8, 0.9);
+      animation: floatScore 1.45s ease-out forwards;
+      white-space: nowrap;
+    }
+
+    /* 羊皮紙金邊彈窗與捲軸質感 */
+    .parchment {
+      background: linear-gradient(155deg, #fffdf9 0%, #f7ecd5 100%);
+      border: 3px solid #d97706;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), inset 0 0 24px rgba(217, 119, 6, 0.22);
+    }
+    .proverb-scroll {
+      background: linear-gradient(180deg, #fef9c3 0%, #fde68a 100%);
+      border-top: 3px solid #92400e;
+      border-bottom: 3px solid #92400e;
+      border-left: 1px solid #f59e0b;
+      border-right: 1px solid #f59e0b;
+      box-shadow: inset 0 0 12px rgba(146, 64, 14, 0.16);
+    }
+
+    /* 電影特效影片層 (Cinematic Cutscene) */
+    #cutscene-layer {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: #030712;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    #cutscene-layer.active {
+      display: flex;
+    }
+    #cutscene-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .cinema-bar {
+      position: relative;
+      z-index: 2;
+      background: linear-gradient(180deg, rgba(2, 6, 23, 0.95) 0%, rgba(2, 6, 23, 0.78) 100%);
+      border-bottom: 2px solid rgba(251, 191, 36, 0.65);
+      padding: 12px 16px;
+    }
+    .cinema-bar.bottom {
+      border-bottom: none;
+      border-top: 2px solid rgba(251, 191, 36, 0.65);
+      background: linear-gradient(0deg, rgba(2, 6, 23, 0.97) 0%, rgba(2, 6, 23, 0.85) 100%);
+      padding: 14px 16px 20px;
+    }
+
+    @keyframes modalPop {
+      0% { opacity: 0; transform: scale(0.86) translateY(18px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .animate-modal {
+      animation: modalPop 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    @keyframes shakeScreen {
+      0%, 100% { transform: translate(0, 0); }
+      20% { transform: translate(-6px, 4px); }
+      40% { transform: translate(6px, -4px); }
+      60% { transform: translate(-4px, -3px); }
+      80% { transform: translate(4px, 3px); }
+    }
+    .screen-shake {
+      animation: shakeScreen 0.45s ease-in-out;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1. Three.js 3D 以色列聖地世界畫布 -->
+  <div id="three-container"></div>
+
+  <!-- 2. 3D 地理名稱、地標標籤與動態飄字層 -->
+  <div id="projection-layer"></div>
+
+  <!-- 3. 全螢幕神蹟與救恩章節特效影片層 (Cinematic Cutscene) -->
+  <div id="cutscene-layer">
+    <canvas id="cutscene-canvas"></canvas>
+    <div class="cinema-bar flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400 text-amber-300 text-xs font-black tracking-wider" id="cs-badge">🎬 救恩歷史特寫影片</span>
+      </div>
+      <button type="button" onclick="skipCutscene()" class="px-3 py-1 rounded-full bg-white/15 hover:bg-white/25 text-amber-200 border border-amber-300/40 text-xs font-bold">
+        略過影片 ⏭️
+      </button>
+    </div>
+    <div class="cinema-bar bottom text-center">
+      <div class="text-amber-300 text-xs font-black tracking-widest mb-1" id="cs-chapter-sub">第一章：創世與列祖</div>
+      <h2 class="serif-title text-white text-lg sm:text-xl font-black mb-1.5 drop-shadow" id="cs-title">神說：要有光！就有了光</h2>
+      <p class="text-amber-100/95 text-xs sm:text-sm font-bold leading-relaxed max-w-md mx-auto" id="cs-verse">「起初，神創造天地。」（創世記 1:1）</p>
+    </div>
+  </div>
+
+  <!-- 4. 遊戲主畫面 HUD 介面 -->
+  <div id="hud-layer" class="hidden fixed inset-0 z-20 pointer-events-none flex-col justify-between p-2 sm:p-3">
+    <!-- 頂部：救恩歷史章節進度條 & 玩家表情狀態卡 -->
+    <div class="pointer-events-auto w-full max-w-md mx-auto flex flex-col gap-1.5">
+      <!-- 頂部工具列與當前聖經章節 -->
+      <div class="bg-slate-900/85 backdrop-blur-md border border-amber-400/50 rounded-2xl px-3 py-1.5 flex items-center justify-between shadow-lg">
+        <button type="button" onclick="openStoryTimelineModal()" class="flex items-center gap-1.5 text-left">
+          <span class="text-base" id="hud-chap-icon">🌅</span>
+          <div>
+            <div class="text-[10px] text-amber-300 font-black leading-none">救恩故事線 (點擊看全章節)</div>
+            <div class="text-xs text-white font-black mt-0.5" id="hud-chap-title">第一章：創世與列祖</div>
+          </div>
+        </button>
+        <div class="flex items-center gap-1">
+          <button type="button" onclick="openProverbsModal()" class="px-2 py-1 rounded-xl bg-amber-500/20 border border-amber-400/50 text-amber-200 text-[11px] font-black">
+            📜 箴言(<span id="hud-prov-count">0</span>)
+          </button>
+          <button type="button" id="btn-bgm" onclick="toggleAudio()" class="px-2 py-1 rounded-xl bg-white/10 border border-white/20 text-amber-200 text-[11px] font-black">
+            🔊 聖詩
+          </button>
+          <button type="button" onclick="openStartOverlay()" class="px-2 py-1 rounded-xl bg-white/10 border border-white/20 text-slate-200 text-[11px] font-bold">
+            選單
+          </button>
+        </div>
+      </div>
+
+      <!-- 雙人角色動態表情與數值狀態卡 -->
+      <div class="grid grid-cols-2 gap-1.5" id="hud-players"></div>
+    </div>
+
+    <!-- 底部：動態訊息橫幅 + 3D 鏡頭控制 + 擲骰大按鈕 -->
+    <div class="pointer-events-auto w-full max-w-md mx-auto flex flex-col gap-1.5">
+      <div class="bg-slate-900/85 backdrop-blur-md border border-amber-400/50 rounded-2xl px-3 py-2 text-center shadow-lg">
+        <div class="text-xs sm:text-sm font-black text-amber-300 truncate" id="hud-msg-title">🕊️ 歡迎來到以色列應許之地！</div>
+        <div class="text-[11px] text-slate-200 truncate mt-0.5" id="hud-msg-sub">單指左右滑動可 360° 旋轉觀察加利利海、約旦河與死海</div>
+      </div>
+
+      <div class="flex items-stretch gap-1.5">
+        <div class="flex flex-col gap-1">
+          <button type="button" onclick="toggleCamView()" class="flex-1 px-2.5 rounded-xl bg-slate-900/90 border border-amber-400/50 text-amber-300 text-[11px] font-black whitespace-nowrap shadow">
+            🎥 視角切換
+          </button>
+          <button type="button" onclick="replayLastCutscene()" class="flex-1 px-2.5 rounded-xl bg-slate-900/90 border border-amber-400/50 text-amber-300 text-[11px] font-black whitespace-nowrap shadow">
+            🎬 重播神蹟
+          </button>
+        </div>
+        <button type="button" id="btn-roll" onclick="handleRollClick()" class="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-b from-amber-300 via-amber-400 to-amber-500 border-b-4 border-amber-700 text-slate-950 font-black text-base shadow-xl flex items-center justify-center gap-2">
+          <span class="text-2xl">🎲</span>
+          <span id="btn-roll-text">擲 3D 骰子前進</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 開局選單（選擇模式 & 6 位聖經重要人物） -->
+  <div id="start-overlay" class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3">
+    <div class="parchment rounded-3xl w-full max-w-md p-4 sm:p-5 max-h-[94dvh] overflow-y-auto animate-modal">
+      <div class="text-center mb-3">
+        <span class="inline-block px-3 py-0.5 rounded-full bg-amber-200 border border-amber-500 text-amber-900 text-[11px] font-black mb-1">
+          🗺️ 以色列 3D 地理 × 創世到啟示錄完整故事線
+        </span>
+        <h1 class="serif-title text-xl sm:text-2xl font-black text-slate-900">聖經大富翁 3D：救恩歷史全紀錄</h1>
+      </div>
+
+      <!-- 模式選擇 -->
+      <div class="mb-3">
+        <label class="block text-xs font-black text-amber-900 mb-1.5">1. 選擇遊玩模式：</label>
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" id="mode-ai" onclick="setGameMode('ai')" class="py-2.5 px-2 rounded-xl border-2 border-amber-600 bg-amber-400 text-slate-950 font-black text-xs shadow">
+            🤖 單人挑戰聖經人物 AI
+          </button>
+          <button type="button" id="mode-2p" onclick="setGameMode('2p')" class="py-2.5 px-2 rounded-xl border-2 border-slate-300 bg-white text-slate-700 font-black text-xs">
+            👥 雙人同機輪流同樂
+          </button>
+        </div>
+      </div>
+
+      <!-- 6 位聖經重要人物選擇 -->
+      <div class="mb-3">
+        <label class="block text-xs font-black text-amber-900 mb-1.5">2. 選擇 P1 聖經重要人物（專屬 3D 造型、表情與天賦）：</label>
+        <div class="grid grid-cols-2 gap-2" id="char-grid"></div>
+      </div>
+
+      <div class="bg-amber-100/90 border border-amber-400 rounded-2xl p-2.5 text-[11px] text-amber-950 leading-relaxed mb-3">
+        <strong>✨ 遊戲核心亮點：</strong><br />
+        • <strong>完整救恩四章節：</strong>從《創世記》伊甸園一路推進至《啟示錄》新耶路撒冷！<br />
+        • <strong>動態人物表情：</strong>3D 角色與頭像會隨事件展現 😊微笑、🤩敬畏、😰試煉、🥳歡呼！<br />
+        • <strong>神蹟特效影片 & 聖經箴言：</strong>觸發重大神蹟播放全螢幕動畫並珍藏箴言智慧。
+      </div>
+
+      <button type="button" onclick="startNewGame()" class="w-full py-3.5 rounded-2xl bg-gradient-to-b from-amber-300 to-amber-500 border-b-4 border-amber-700 text-slate-950 font-black text-base shadow-lg">
+        🚀 啟程進入以色列應許之地
+      </button>
+    </div>
+  </div>
+
+  <!-- 6. 通用聖經事件 / 章節故事 / 箴言 / 問答彈窗 -->
+  <div id="event-modal" class="hidden fixed inset-0 z-40 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3.5">
+    <div class="parchment rounded-3xl w-full max-w-sm p-4 sm:p-5 text-center max-h-[90dvh] overflow-y-auto animate-modal">
+      <span id="em-badge" class="inline-block px-3 py-0.5 rounded-full bg-amber-200 border border-amber-500 text-amber-900 text-[11px] font-black mb-1.5">聖經事件</span>
+      <div id="em-icon" class="text-4xl mb-1">✨</div>
+      <h2 id="em-title" class="serif-title text-lg sm:text-xl font-black text-slate-900 mb-2">標題</h2>
+      <div id="em-body" class="text-xs sm:text-sm text-slate-700 leading-relaxed mb-3.5"></div>
+      <div id="em-actions" class="flex flex-col gap-2"></div>
+    </div>
+  </div>
+
+  <!-- 7. 救恩歷史四章節全覽彈窗 -->
+  <div id="timeline-modal" class="hidden fixed inset-0 z-45 bg-slate-950/80 flex items-center justify-center p-3.5">
+    <div class="parchment rounded-3xl w-full max-w-md p-4 sm:p-5 max-h-[88dvh] overflow-y-auto animate-modal">
+      <div class="text-center mb-3">
+        <span class="inline-block px-3 py-0.5 rounded-full bg-amber-200 border border-amber-500 text-amber-900 text-[11px] font-black mb-1">📖 聖經從頭到尾救恩故事線</span>
+        <h2 class="serif-title text-lg font-black text-slate-900">救恩歷史四大章節進度</h2>
+      </div>
+      <div id="timeline-list" class="flex flex-col gap-2.5 mb-4"></div>
+      <button type="button" onclick="closeModal('timeline-modal')" class="w-full py-3 rounded-2xl bg-gradient-to-b from-amber-300 to-amber-500 border-b-4 border-amber-700 text-slate-950 font-black text-sm">
+        返回 3D 聖地棋盤
+      </button>
+    </div>
+  </div>
+
+  <!-- 8. 聖經箴言智慧收藏冊彈窗 -->
+  <div id="proverbs-modal" class="hidden fixed inset-0 z-45 bg-slate-950/80 flex items-center justify-center p-3.5">
+    <div class="parchment rounded-3xl w-full max-w-md p-4 sm:p-5 max-h-[88dvh] overflow-y-auto animate-modal">
+      <div class="text-center mb-3">
+        <span class="inline-block px-3 py-0.5 rounded-full bg-amber-200 border border-amber-500 text-amber-900 text-[11px] font-black mb-1">📜 聖經箴言智慧宝庫</span>
+        <h2 class="serif-title text-lg font-black text-slate-900">已領受的箴言與金句</h2>
+      </div>
+      <div id="proverbs-list" class="flex flex-col gap-2 mb-4 max-h-[52dvh] overflow-y-auto"></div>
+      <button type="button" onclick="closeModal('proverbs-modal')" class="w-full py-3 rounded-2xl bg-gradient-to-b from-amber-300 to-amber-500 border-b-4 border-amber-700 text-slate-950 font-black text-sm">
+        阿們！珍藏在心裡
+      </button>
+    </div>
+  </div>
+
+  <!-- 9. 勝利慶祝與 LINE 分享彈窗 -->
+  <div id="victory-modal" class="hidden fixed inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-3.5">
+    <div class="parchment rounded-3xl w-full max-w-sm p-5 text-center animate-modal">
+      <span class="inline-block px-3 py-0.5 rounded-full bg-amber-200 border border-amber-500 text-amber-900 text-[11px] font-black mb-1">🏆 信心得勝 • 榮耀冠冕</span>
+      <div class="text-5xl my-1">👑</div>
+      <h2 id="vic-title" class="serif-title text-xl font-black text-slate-900 mb-2">恭喜獲得勝利！</h2>
+      <div id="vic-summary" class="mb-4"></div>
+      <div class="flex flex-col gap-2">
+        <button type="button" id="btn-copy-line" onclick="copyLineShare()" class="w-full py-3 rounded-2xl bg-[#06c755] border-b-4 border-emerald-800 text-white font-black text-sm shadow">
+          📋 一鍵複製戰績分享 (LINE)
+        </button>
+        <button type="button" onclick="startNewGame()" class="w-full py-3 rounded-2xl bg-gradient-to-b from-amber-300 to-amber-500 border-b-4 border-amber-700 text-slate-950 font-black text-sm">
+          🔄 再玩一局救恩歷史
+        </button>
+        <button type="button" onclick="openStartOverlay()" class="w-full py-2.5 rounded-2xl bg-slate-200 text-slate-700 font-bold text-xs">
+          返回角色選單
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================================
+    // 1. Web Audio API 趣味擬真音效與聖詩背景配樂引擎 (零外部音檔、Android 觸控解鎖)
+    // ============================================================================
+    var audioCtx = null;
+    var audioMuted = false;
+    var bgmTimer = null;
+    var bgmNoteIdx = 0;
+    // 溫暖豎琴五聲音階聖詩旋律 (D大調/五聲音階)
+    var WORSHIP_NOTES = [
+      293.66, 369.99, 440.00, 587.33, 440.00, 369.99,
+      329.63, 392.00, 493.88, 587.33, 493.88, 392.00,
+      246.94, 329.63, 392.00, 493.88, 392.00, 329.63,
+      220.00, 293.66, 369.99, 440.00, 369.99, 293.66
+    ];
+
+    function initAudio() {
+      try {
+        if (!audioCtx) {
+          var AC = window.AudioContext || window.webkitAudioContext;
+          if (AC) audioCtx = new AC();
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        if (!bgmTimer) {
+          bgmTimer = setInterval(function () {
+            if (audioMuted || !audioCtx || audioCtx.state !== 'running') return;
+            var f = WORSHIP_NOTES[bgmNoteIdx % WORSHIP_NOTES.length];
+            bgmNoteIdx++;
+            playTone(f, 'sine', 0.72, 0.026, 0.04);
+          }, 480);
+        }
+      } catch (e) {}
+    }
+
+    function toggleAudio() {
+      audioMuted = !audioMuted;
+      document.getElementById('btn-bgm').innerText = audioMuted ? '🔇 靜音' : '🔊 聖詩';
+      if (!audioMuted) {
+        initAudio();
+        playSfx('pop');
+      }
+    }
+
+    function playTone(freq, type, dur, vol, atk, endFreq) {
+      if (audioMuted || !audioCtx) return;
+      try {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        var now = audioCtx.currentTime;
+        var osc = audioCtx.createOscillator();
+        var gain = audioCtx.createGain();
+        osc.type = type || 'sine';
+        osc.frequency.setValueAtTime(freq, now);
+        if (endFreq) {
+          osc.frequency.exponentialRampToValueAtTime(endFreq, now + dur);
+        }
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.linearRampToValueAtTime(vol || 0.12, now + (atk || 0.015));
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + dur + 0.04);
+      } catch (e) {}
+    }
+
+    function playSfx(type) {
+      if (audioMuted || !audioCtx) return;
+      if (type === 'pop') {
+        playTone(540, 'sine', 0.1, 0.11, 0.01, 760);
+      } else if (type === 'dice') {
+        // 木頭骰子清脆滾動敲擊聲
+        var seq = [260, 390, 310, 480, 350, 620];
+        for (var i = 0; i < seq.length; i++) {
+          (function (idx) {
+            setTimeout(function () { playTone(seq[idx], 'triangle', 0.065, 0.14, 0.004); }, idx * 75);
+          })(i);
+        }
+      } else if (type === 'boing') {
+        // 角色 Q 彈跳躍趣味「啵咿～」音效
+        playTone(260, 'sine', 0.18, 0.14, 0.01, 640);
+      } else if (type === 'splash') {
+        // 加利利海／約旦河清脆水花音效
+        var notes = [523.25, 659.25, 783.99, 1046.5];
+        for (var s = 0; s < notes.length; s++) {
+          (function (idx) {
+            setTimeout(function () { playTone(notes[idx], 'sine', 0.16, 0.1, 0.01); }, idx * 50);
+          })(s);
+        }
+      } else if (type === 'coin') {
+        playTone(987.77, 'sine', 0.14, 0.13, 0.01);
+        setTimeout(function () { playTone(1318.51, 'sine', 0.32, 0.15, 0.01); }, 80);
+      } else if (type === 'harp') {
+        // 聖經箴言與恩典豎琴滑音
+        var harpNotes = [293.66, 369.99, 440.00, 587.33, 739.99, 880.00];
+        for (var h = 0; h < harpNotes.length; h++) {
+          (function (idx) {
+            setTimeout(function () { playTone(harpNotes[idx], 'sine', 0.45, 0.11, 0.015); }, idx * 65);
+          })(h);
+        }
+      } else if (type === 'build') {
+        // 聖殿落成榮耀和弦
+        var chord = [261.63, 329.63, 392.00, 523.25, 659.25];
+        for (var b = 0; b < chord.length; b++) {
+          (function (idx) {
+            setTimeout(function () { playTone(chord[idx], 'triangle', 0.55, 0.14, 0.02); }, idx * 65);
+          })(b);
+        }
+      } else if (type === 'trial') {
+        // 試煉趣味低音滑落音效
+        playTone(293.66, 'sawtooth', 0.25, 0.09, 0.01, 220);
+        setTimeout(function () { playTone(207.65, 'sawtooth', 0.42, 0.1, 0.01, 146.83); }, 220);
+      } else if (type === 'cutscene') {
+        // 電影神蹟交響和弦
+        playTone(146.83, 'sawtooth', 1.1, 0.09, 0.06);
+        setTimeout(function () {
+          playTone(293.66, 'triangle', 1.0, 0.13, 0.05);
+          playTone(440.00, 'triangle', 1.0, 0.13, 0.05);
+          playTone(587.33, 'triangle', 1.1, 0.14, 0.05);
+        }, 160);
+      } else if (type === 'victory') {
+        var fanfare = [
+          { f: 523.25, t: 0, d: 0.15 }, { f: 523.25, t: 140, d: 0.15 }, { f: 523.25, t: 280, d: 0.15 },
+          { f: 659.25, t: 430, d: 0.35 }, { f: 587.33, t: 750, d: 0.2 }, { f: 659.25, t: 940, d: 0.2 },
+          { f: 783.99, t: 1130, d: 0.85 }
+        ];
+        for (var v = 0; v < fanfare.length; v++) {
+          (function (it) {
+            setTimeout(function () {
+              playTone(it.f, 'triangle', it.d, 0.16, 0.02);
+              playTone(it.f * 0.5, 'sine', it.d, 0.11, 0.02);
+            }, it.t);
+          })(fanfare[v]);
+        }
+      }
+    }
+
+    // ============================================================================
+    // 2. 聖經從頭到尾救恩故事線 (4大章節)、6位聖經人物與表情、聖經箴言庫
+    // ============================================================================
+    var TARGET_FAITH = 40;
+    var gameMode = 'ai';
+    var selectedCharIndex = 0;
+
+    // 救恩歷史四大章節（從創世記到啟示錄）
+    var STORY_CHAPTERS = [
+      {
+        num: 1,
+        icon: '🌅',
+        title: '第一章：創世與列祖 (創世記)',
+        era: '伊甸園 → 挪亞方舟 → 摩利亞山 → 雅各天梯',
+        summary: '起初神創造美好的天地與人類，雖因罪失落，神仍透過挪亞方舟拯救生命，並呼召信心之父亞伯拉罕與雅各立下永恆恩典之約。',
+        verse: '「起初，神創造天地。」（創世記 1:1）',
+        cutsceneType: 'creation'
+      },
+      {
+        num: 2,
+        icon: '🌊',
+        title: '第二章：出埃及與律法 (出埃及記~約書亞記)',
+        era: '紅海分開 → 西乃山十誡 → 曠野嗎哪 → 耶利哥城',
+        summary: '神差遣摩西帶領以色列百姓出離埃及為奴之地，在西乃山頒布十誡律法、賜下天降嗎哪，並由約書亞帶領憑信心攻克耶利哥進入應許之地。',
+        verse: '「耶和華必為你們爭戰，你們只管靜默，不要作聲。」（出埃及記 14:14）',
+        cutsceneType: 'redsea'
+      },
+      {
+        num: 3,
+        icon: '👑',
+        title: '第三章：王國與先知 (撒母耳記~但以理書)',
+        era: '大衛戰歌利亞 → 所羅門聖殿 → 迦密山聖火 → 獅子坑',
+        summary: '牧羊人大衛靠萬軍之耶和華戰勝巨人歌利亞，所羅門建造榮耀聖殿；在列王背道時，先知以利亞與但以理堅守信仰彰顯神的大能。',
+        verse: '「你來攻擊我，是靠著刀槍和銅戟；我來攻擊你，是靠著萬軍之耶和華的名。」（撒母耳記上 17:45）',
+        cutsceneType: 'goliath'
+      },
+      {
+        num: 4,
+        icon: '✝️',
+        title: '第四章：福音與新天新地 (四福音~啟示錄)',
+        era: '伯利恆降生 → 加利利海 → 各各他空墳墓 → 新耶路撒冷',
+        summary: '道成肉身的救主耶穌降生伯利恆、在加利利海行神蹟，為世人釘十架並戰勝死亡復活！聖靈降臨建立教會，直到榮耀的新耶路撒冷降臨。',
+        verse: '「神要擦去他們一切的眼淚；不再有死亡，也不再有悲哀、哭號、疼痛。」（啟示錄 21:4）',
+        cutsceneType: 'resurrection'
+      }
+    ];
+
+    // 6 位聖經重要人物（含專屬 3D 色調、動態表情系統、天賦）
+    var BIBLICAL_HEROES = [
+      { id: 'moses',  name: '領袖摩西',   icon: '🪄', robe: 0x059669, accent: 0xfde047, coins: 550, faith: 2, skill: '【分開紅海】遇到試煉 75% 直接化解並反獲 +2 ❤️' },
+      { id: 'david',  name: '牧羊人大衛', icon: '👑', robe: 0x2563eb, accent: 0xfbbf24, coins: 500, faith: 3, skill: '【敬拜金琴】每次獲得信心值額外 +1 ❤️' },
+      { id: 'esther', name: '皇后以斯帖', icon: '👸', robe: 0x7c3aed, accent: 0xfde047, coins: 650, faith: 1, skill: '【皇家恩寵】過起點或領箴言額外 +180 🪙' },
+      { id: 'paul',   name: '使徒保羅',   icon: '📜', robe: 0xe11d48, accent: 0xfde047, coins: 520, faith: 2, skill: '【宣教書卷】建造與升級聖殿享 8 折優惠' },
+      { id: 'peter',  name: '漁夫彼得',   icon: '⛵', robe: 0x0284c7, accent: 0xfde047, coins: 540, faith: 2, skill: '【得人漁夫】踩水邊地標額外獲得 +120 🪙' },
+      { id: 'ruth',   name: '忠貞路得',   icon: '🌾', robe: 0xd97706, accent: 0xfef08a, coins: 580, faith: 2, skill: '【拾穗祝福】彼此代禱時雙方額外 +1 ❤️' }
+    ];
+
+    // 人物表情狀態定義（同時驅動 3D 頭像紋理與 HUD 頭像徽章）
+    var EXPRESSIONS = {
+      happy:   { emoji: '😊', label: '喜樂平安', mouth: 'smile' },
+      amazed:  { emoji: '🤩', label: '敬畏驚喜', mouth: 'open' },
+      nervous: { emoji: '😰', label: '試煉警醒', mouth: 'wavy' },
+      victory: { emoji: '🥳', label: '得勝歡呼', mouth: 'laugh' }
+    };
+
+    // 16 個貫穿以色列地理與創世到啟示錄的棋盤格
+    var BOARD_TILES = [
+      { id: 0,  chap: 1, x: -0.7, z:  1.4, type: 'start',    icon: '🌅', name: '伊甸與聖城',   hex: '#f59e0b', cost: 0,   water: false, verse: '創世記 1:31「神看著一切所造的都甚好。」', story: '救恩歷史的起點！神創造天地萬物，每次經過或停留領受 +220 恩典幣與新生命祝福。' },
+      { id: 1,  chap: 1, x: -1.9, z:  3.5, type: 'story',    icon: '🚢', name: '挪亞方舟',     hex: '#0284c7', cost: 120, water: true,  verse: '創世記 9:13「我把虹放在雲彩中，這就可作我與地立約的記號了。」', story: '挪亞憑信心建造方舟全家得救，雨後天邊出現神立約的彩虹！' },
+      { id: 2,  chap: 1, x: -0.5, z:  2.7, type: 'story',    icon: '🐏', name: '摩利亞山',     hex: '#2563eb', cost: 130, water: false, verse: '創世記 22:14「亞伯拉罕給那地方起名叫『耶和華以勒』。」', story: '信心之父亞伯拉罕順服獻以撒，神親自預備公羊替代，彰顯「耶和華必預備」！' },
+      { id: 3,  chap: 1, x:  0.6, z:  1.1, type: 'proverb',  icon: '🪜', name: '伯特利天梯',   hex: '#10b981', cost: 0,   water: false, verse: '箴言 3:5-6「你要專心仰賴耶和華，不可倚靠自己的聰明。」', story: '雅各夢見天梯頂天立地、天使上去下來，在此抽取【聖經箴言】智慧卷軸！' },
+
+      { id: 4,  chap: 2, x: -3.2, z:  2.8, type: 'miracle',  icon: '🌊', name: '紅海分開',     hex: '#0ea5e9', cost: 160, water: true,  cutscene: 'redsea', verse: '出埃及記 14:21「摩西向海伸杖，耶和華便用大東風，使海水一夜退去，水便分開。」', story: '摩西向海伸杖，紅海分開成為乾地！觸發【紅海分開】3D 電影神蹟特效！' },
+      { id: 5,  chap: 2, x: -2.4, z:  4.2, type: 'story',    icon: '📜', name: '西乃山十誡',   hex: '#d97706', cost: 160, water: false, verse: '出埃及記 20:2-3「我是耶和華你的神……除了我以外，你不可有別的神。」', story: '西乃山雷轟閃電，摩西領受神親手所寫的十誡法版，確立聖約子民的生活準則。' },
+      { id: 6,  chap: 2, x: -2.8, z:  0.9, type: 'proverb',  icon: '🍞', name: '曠野嗎哪',     hex: '#14b8a6', cost: 0,   water: false, verse: '箴言 4:23「你要保守你心，勝過保守一切，因為一生的果效是由心發出。」', story: '神每日清晨從天降下嗎哪餵養百姓，領受【聖經箴言】與今日飲食祝福！' },
+      { id: 7,  chap: 2, x:  0.8, z:  0.3, type: 'story',    icon: '🎺', name: '耶利哥城牆',   hex: '#ea580c', cost: 180, water: false, verse: '約書亞記 6:20「百姓大聲呼喊，城牆就塌陷，百姓便上去進城。」', story: '約書亞帶領祭司抬約櫃吹角繞城七日，信心呼喊使堅固城牆應聲倒塌！' },
+
+      { id: 8,  chap: 3, x: -1.5, z:  1.9, type: 'miracle',  icon: '🪨', name: '大衛戰歌利亞', hex: '#4f46e5', cost: 190, water: false, cutscene: 'goliath', verse: '撒母耳記上 17:45「我來攻擊你，是靠著萬軍之耶和華的名。」', story: '少年大衛在以拉谷用五顆光滑石子打敗巨人歌利亞！觸發【大衛得勝】特效影片！' },
+      { id: 9,  chap: 3, x: -0.4, z:  0.6, type: 'story',    icon: '🏛️', name: '所羅門聖殿',   hex: '#ca8a04', cost: 220, water: false, verse: '列王紀上 8:11「耶和華的榮光充滿了殿。」', story: '所羅門王在耶路撒冷建成金碧輝煌的聖殿，神榮耀的雲彩充滿殿宇！' },
+      { id: 10, chap: 3, x: -2.4, z: -1.5, type: 'trial',    icon: '🔥', name: '迦密山聖火',   hex: '#e11d48', cost: 0,   water: false, verse: '列王紀上 18:38「於是，耶和華降下火來，燒盡燔祭、木柴、石頭、塵土。」', story: '先知以利亞獨自面對四百五十位假先知，禱告求神降火顯明真神！進入試煉問答考驗。' },
+      { id: 11, chap: 3, x:  1.5, z:  1.8, type: 'trial',    icon: '🦁', name: '但以理獅子坑', hex: '#be123c', cost: 0,   water: false, verse: '但以理書 6:22「我的神差遣使者，封住獅子的口，叫獅子不傷我。」', story: '但以理堅持一日三次向耶路撒冷禱告，被丟入獅子坑卻蒙天使保護毫髮無傷！' },
+
+      { id: 12, chap: 4, x: -0.9, z:  2.0, type: 'story',    icon: '⭐', name: '伯利恆降生',   hex: '#0284c7', cost: 200, water: false, verse: '路加福音 2:11「因今天在大衛的城裡，為你們生了救主，就是主基督。」', story: '伯利恆之星閃耀夜空，天使報大喜信息，救主耶穌基督降生在馬槽裡！' },
+      { id: 13, chap: 4, x:  0.5, z: -2.7, type: 'story',    icon: '⛵', name: '加利利海',     hex: '#0ea5e9', cost: 220, water: true,  verse: '馬可福音 4:39「耶穌醒了，斥責風，向海說：『住了吧！靜了吧！』風就止住，大大地平靜了。」', story: '耶穌在加利利海邊呼召門徒、五餅二魚飽五千人，並一句話平靜狂風巨浪！' },
+      { id: 14, chap: 4, x: -0.6, z: -0.4, type: 'miracle',  icon: '✝️', name: '各各他與空墓', hex: '#7c3aed', cost: 240, water: false, cutscene: 'resurrection', verse: '馬太福音 28:6「他不在這裡，照他所說的，已經復活了。」', story: '主耶穌在十字架上成就救恩並第三日復活！觸發【復活大光】神蹟特效影片！' },
+      { id: 15, chap: 4, x:  1.2, z: -1.1, type: 'proverb',  icon: '🕊️', name: '約旦河與新天新地', hex: '#059669', cost: 0, water: true, verse: '啟示錄 21:5「坐寶座的說：『看哪，我將一切都更新了！』」', story: '約旦河見證受洗與恩膏，福音從耶路撒冷傳到地極，直到榮耀新耶路撒冷降臨！' }
+    ];
+
+    // 聖經箴言智慧庫
+    var PROVERBS_BOOK = [
+      { ref: '箴言 3:5-6', title: '專心仰賴耶和華', text: '「你要專心仰賴耶和華，不可倚靠自己的聰明，在你一切所行的事上都要認定他，他必指引你的路。」', reflect: '放下焦慮交託給神，祂必為你開出平安的道路！', coins: 180, faith: 3 },
+      { ref: '箴言 4:23', title: '保守你心勝過保守一切', text: '「你要保守你心，勝過保守一切，因為一生的果效是由心發出。」', reflect: '心懷感恩與良善，生命就會結出豐盛的果實。', coins: 150, faith: 3 },
+      { ref: '箴言 9:10', title: '敬畏耶和華是智慧開端', text: '「敬畏耶和華是智慧的開端；認識至聖者便是聰明。」', reflect: '真正的聰明來自認識創造宇宙的天父！', coins: 160, faith: 3 },
+      { ref: '箴言 15:1', title: '回答柔和使怒消退', text: '「回答柔和，使怒消退；言語暴戾，觸動怒氣。」', reflect: '一句溫柔造就人的話，能化解一切衝突。', coins: 140, faith: 3 },
+      { ref: '箴言 16:3', title: '所謀的必成立', text: '「你所做的，要交託耶和華，你所謀的，就必成立。」', reflect: '凡事起頭先禱告，神必賜福手中的工作。', coins: 200, faith: 2 },
+      { ref: '箴言 17:22', title: '喜樂的心乃是良藥', text: '「喜樂的心乃是良藥；憂傷的靈使骨枯乾。」', reflect: '靠主常喜樂，身心靈都得著醫治與剛強！', coins: 170, faith: 3 },
+      { ref: '箴言 27:17', title: '鐵磨鐵磨出刃來', text: '「鐵磨鐵，磨出刃來；朋友相感也是如此。」', reflect: '在教會小組中彼此代禱激勵，信仰更加堅固！', coins: 150, faith: 4 }
+    ];
+
+    // 聖經故事問答題庫（涵蓋創世記到啟示錄）
+    var BIBLE_QUIZZES = [
+      { q: '《箴言 9:10》：「敬畏耶和華是______的開端」？', opts: ['智慧', '財富', '長壽'], ans: 0, ref: '箴言 9:10' },
+      { q: '神在洪水之後，在雲彩中放了什麼作為與地立約的記號？', opts: ['彩虹', '伯利恆之星', '火柱'], ans: 0, ref: '創世記 9:13' },
+      { q: '摩西在西乃山上領受了神所頒布的什麼法版？', opts: ['十誡', '八福', '五經'], ans: 0, ref: '出埃及記 20 章' },
+      { q: '少年大衛用什麼武器打敗了非利士巨人歌利亞？', opts: ['機弦與光滑石子', '銅戟與長矛', '黃金寶劍'], ans: 0, ref: '撒母耳記上 17:49' },
+      { q: '先知以利亞在哪一座山上禱告，使神從天降下聖火？', opts: ['迦密山', '西乃山', '橄欖山'], ans: 0, ref: '列王紀上 18:38' },
+      { q: '但以理因為堅持一日三次禱告，被丟進了哪裡卻蒙神拯救？', opts: ['獅子坑', '烈火窯', '深海魚腹'], ans: 0, ref: '但以理書 6:16' },
+      { q: '救主耶穌基督降生在猶太的哪一座城鎮？', opts: ['伯利恆', '拿撒勒', '迦百農'], ans: 0, ref: '路加福音 2:4' },
+      { q: '耶穌在加利利海邊用什麼餵飽了五千人？', opts: ['五餅二魚', '嗎哪與鵪鶉', '無花果與蜂蜜'], ans: 0, ref: '馬太福音 14:17' },
+      { q: '《啟示錄》最後應許神要從天而降的榮耀聖城叫什麼名字？', opts: ['新耶路撒冷', '新巴比倫', '新安提阿'], ans: 0, ref: '啟示錄 21:2' },
+      { q: '《箴言 17:22》：「______乃是良藥；憂傷的靈使骨枯乾」？', opts: ['喜樂的心', '謙卑的靈', '忍耐的愛'], ans: 0, ref: '箴言 17:22' }
+    ];
+
+    var BUILD_LEVELS = [
+      { lv: 0, name: '空地', icon: '',   faith: 0, toll: 0,   tollFaith: 0 },
+      { lv: 1, name: '石壇', icon: '⛩️', faith: 3, toll: 70,  tollFaith: 1 },
+      { lv: 2, name: '會幕', icon: '⛺', faith: 5, toll: 120, tollFaith: 2 },
+      { lv: 3, name: '聖殿', icon: '🏛️', faith: 8, toll: 180, tollFaith: 3 }
+    ];
+
+    // ============================================================================
+    // 3. Three.js 3D 以色列聖地地形、動態臉部表情角色與 3D 特效系統
+    // ============================================================================
+    var scene, camera, renderer;
+    var tileMeshes = [], buildingGroups = {}, pawnGroups = [];
+    var galileeMesh, deadSeaMesh, jordanMesh, medSeaMesh, fishingBoat;
+    var dice3D = null;
+    var particles3D = [];
+    var diceRollAnim = { active: false, t: 0, dur: 0.72, target: { x: 0, y: 0, z: 0 } };
+    var pawnHopAnim = { active: false, idx: 0, from: null, to: null, p: 0, done: null };
+    var camYaw = 0.0, camCloseMode = false, draggingCam = false, lastX = 0;
+
+    function init3DWorld() {
+      var container = document.getElementById('three-container');
+      scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x38bdf8, 0.016);
+
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 140);
+      camera.position.set(0, 12.2, 12.0);
+      camera.lookAt(0, 0.2, 0.2);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      container.appendChild(renderer.domElement);
+
+      var hemi = new THREE.HemisphereLight(0xffffff, 0x86efac, 0.88);
+      scene.add(hemi);
+
+      var sun = new THREE.DirectionalLight(0xfffbeb, 1.15);
+      sun.position.set(10, 19, 11);
+      sun.castShadow = true;
+      sun.shadow.mapSize.width = 1024;
+      sun.shadow.mapSize.height = 1024;
+      var d = 10;
+      sun.shadow.camera.left = -d;
+      sun.shadow.camera.right = d;
+      sun.shadow.camera.top = d;
+      sun.shadow.camera.bottom = -d;
+      scene.add(sun);
+
+      buildIsraelTerrain3D();
+      buildBoardTiles3D();
+      buildDice3D();
+      initProjectionLabels();
+      bindOrbitTouch(renderer.domElement);
+
+      window.addEventListener('resize', function () {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      renderLoop3D();
+    }
+
+    // 雕塑級「聖經以色列 3D 地理立體地圖」（西地中海、北加利利海、約旦河、東南死海、南西乃曠野）
+    function buildIsraelTerrain3D() {
+      // 1. 西方地中海湛藍海面底座
+      var seaGeo = new THREE.CylinderGeometry(9.2, 8.8, 0.5, 40);
+      var seaMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.22, metalness: 0.18 });
+      medSeaMesh = new THREE.Mesh(seaGeo, seaMat);
+      medSeaMesh.position.y = -0.68;
+      medSeaMesh.receiveShadow = true;
+      scene.add(medSeaMesh);
+
+      // 浮空聖地岩盤底座
+      var baseRock = new THREE.Mesh(
+        new THREE.ConeGeometry(8.8, 5.6, 14),
+        new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9, flatShading: true })
+      );
+      baseRock.rotation.x = Math.PI;
+      baseRock.position.y = -3.7;
+      scene.add(baseRock);
+
+      // 2. 以色列應許之地綠意丘陵陸地
+      var land = new THREE.Mesh(
+        new THREE.BoxGeometry(7.8, 0.65, 9.8),
+        new THREE.MeshStandardMaterial({ color: 0x4ade80, roughness: 0.78 })
+      );
+      land.position.set(-0.3, -0.35, 0.2);
+      land.receiveShadow = true;
+      scene.add(land);
+
+      // 南方西乃曠野與紅海沿岸金色沙丘
+      var sinai = new THREE.Mesh(
+        new THREE.BoxGeometry(7.2, 0.68, 2.5),
+        new THREE.MeshStandardMaterial({ color: 0xfcd34d, roughness: 0.85 })
+      );
+      sinai.position.set(-0.5, -0.33, 3.7);
+      sinai.receiveShadow = true;
+      scene.add(sinai);
+
+      // 3. 北方「加利利海」(水滴形藍寶石湖泊 + 動態小漁船)
+      galileeMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.85, 0.75, 0.16, 22),
+        new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.35, roughness: 0.12 })
+      );
+      galileeMesh.scale.set(0.85, 1, 1.25);
+      galileeMesh.position.set(0.5, 0.02, -2.7);
+      scene.add(galileeMesh);
+
+      fishingBoat = new THREE.Group();
+      var hull = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.1, 0.42), new THREE.MeshStandardMaterial({ color: 0x92400e }));
+      var sail = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.36, 3), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      sail.position.y = 0.22;
+      fishingBoat.add(hull);
+      fishingBoat.add(sail);
+      fishingBoat.position.set(0.5, 0.14, -2.7);
+      scene.add(fishingBoat);
+
+      // 4. 蜿蜒貫穿南北的「約旦河」
+      jordanMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.26, 0.12, 3.4),
+        new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0369a1, emissiveIntensity: 0.28 })
+      );
+      jordanMesh.position.set(0.85, 0.01, -0.4);
+      scene.add(jordanMesh);
+
+      // 5. 東南方「死海」
+      deadSeaMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.68, 0.65, 0.16, 20),
+        new THREE.MeshStandardMaterial({ color: 0x1d4ed8, emissive: 0x1e3a8a, emissiveIntensity: 0.38, roughness: 0.1 })
+      );
+      deadSeaMesh.scale.set(0.75, 1, 1.6);
+      deadSeaMesh.position.set(1.15, 0.02, 2.2);
+      scene.add(deadSeaMesh);
+
+      // 6. 中央聖山丘陵（耶路撒冷聖殿山、迦密山、西乃山）
+      var hillMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.85, flatShading: true });
+      var sandHillMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.85, flatShading: true });
+      var mounts = [
+        { x: -0.4, z: 0.6, r: 0.95, h: 0.55, m: hillMat },
+        { x: -2.4, z: -1.5, r: 0.85, h: 0.65, m: hillMat },
+        { x: -2.4, z: 4.2, r: 0.9, h: 0.7, m: sandHillMat }
+      ];
+      for (var i = 0; i < mounts.length; i++) {
+        var hm = new THREE.Mesh(new THREE.ConeGeometry(mounts[i].r, mounts[i].h, 7), mounts[i].m);
+        hm.position.set(mounts[i].x, 0.15, mounts[i].z);
+        scene.add(hm);
+      }
+    }
+
+    function makeTileTexture(tile) {
+      var cvs = document.createElement('canvas');
+      cvs.width = 256;
+      cvs.height = 256;
+      var ctx = cvs.getContext('2d');
+      ctx.fillStyle = '#fffdf7';
+      ctx.fillRect(0, 0, 256, 256);
+
+      ctx.fillStyle = tile.hex;
+      ctx.fillRect(0, 0, 256, 56);
+
+      ctx.strokeStyle = '#d97706';
+      ctx.lineWidth = 10;
+      ctx.strokeRect(5, 5, 246, 246);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('第 ' + tile.chap + ' 章', 128, 36);
+
+      ctx.font = '86px sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(tile.icon, 128, 140);
+
+      ctx.fillStyle = '#78350f';
+      ctx.font = 'bold 26px sans-serif';
+      var foot = tile.cost > 0 ? ('🪙 ' + tile.cost) : (tile.type === 'proverb' ? '📜 箴言' : '聖經事件');
+      ctx.fillText(foot, 128, 220);
+
+      return new THREE.CanvasTexture(cvs);
+    }
+
+    function buildBoardTiles3D() {
+      tileMeshes = [];
+      var geo = new THREE.BoxGeometry(1.12, 0.24, 1.12);
+      for (var i = 0; i < BOARD_TILES.length; i++) {
+        var t = BOARD_TILES[i];
+        var sideMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(t.hex), roughness: 0.45 });
+        var topMat = new THREE.MeshStandardMaterial({ map: makeTileTexture(t), roughness: 0.32 });
+        var m = new THREE.Mesh(geo, [sideMat, sideMat, topMat, sideMat, sideMat, sideMat]);
+        m.position.set(t.x, 0.14, t.z);
+        m.receiveShadow = true;
+        m.castShadow = true;
+        scene.add(m);
+        tileMeshes.push(m);
+
+        // 金色救恩朝聖路徑連線
+        var nxt = BOARD_TILES[(i + 1) % BOARD_TILES.length];
+        var dx = nxt.x - t.x;
+        var dz = nxt.z - t.z;
+        var dist = Math.sqrt(dx * dx + dz * dz);
+        var line = new THREE.Mesh(
+          new THREE.BoxGeometry(0.13, 0.06, dist),
+          new THREE.MeshBasicMaterial({ color: 0xfde047 })
+        );
+        line.position.set((t.x + nxt.x) / 2, 0.08, (t.z + nxt.z) / 2);
+        line.rotation.y = Math.atan2(dx, dz);
+        scene.add(line);
+      }
+    }
+
+    // 繪製 3D 人物動態表情臉部紋理（喜樂微笑、敬畏驚喜、試煉緊張、勝利歡呼）
+    function createFaceExpressionTexture(exprKey) {
+      var cvs = document.createElement('canvas');
+      cvs.width = 128;
+      cvs.height = 128;
+      var ctx = cvs.getContext('2d');
+
+      // 溫暖膚色底
+      ctx.fillStyle = '#fde68a';
+      ctx.fillRect(0, 0, 128, 128);
+
+      // 腮紅
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.35)';
+      ctx.beginPath();
+      ctx.arc(36, 74, 11, 0, Math.PI * 2);
+      ctx.arc(92, 74, 11, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#1e1b4b';
+      ctx.fillStyle = '#1e1b4b';
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+
+      if (exprKey === 'happy') {
+        // 彎月笑眼 + 開心微笑
+        ctx.beginPath();
+        ctx.arc(44, 54, 8, Math.PI, 0);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(84, 54, 8, Math.PI, 0);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(64, 72, 16, 0.15 * Math.PI, 0.85 * Math.PI);
+        ctx.stroke();
+      } else if (exprKey === 'amazed') {
+        // 閃亮大眼 + 敬畏驚喜 O 型嘴
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(44, 52, 9, 0, Math.PI * 2);
+        ctx.arc(84, 52, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#dc2626';
+        ctx.beginPath();
+        ctx.arc(64, 80, 11, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (exprKey === 'nervous') {
+        // 八字眉 + 緊張波浪嘴
+        ctx.beginPath();
+        ctx.moveTo(34, 46); ctx.lineTo(52, 40);
+        ctx.moveTo(94, 46); ctx.lineTo(76, 40);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(44, 56, 6, 0, Math.PI * 2);
+        ctx.arc(84, 56, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(46, 82); ctx.lineTo(58, 76); ctx.lineTo(70, 82); ctx.lineTo(82, 76);
+        ctx.stroke();
+      } else {
+        // 勝利歡呼大笑
+        ctx.beginPath();
+        ctx.arc(44, 52, 9, Math.PI, 0);
+        ctx.arc(84, 52, 9, Math.PI, 0);
+        ctx.stroke();
+        ctx.fillStyle = '#e11d48';
+        ctx.beginPath();
+        ctx.arc(64, 72, 18, 0, Math.PI);
+        ctx.fill();
+      }
+
+      return new THREE.CanvasTexture(cvs);
+    }
+
+    function createHero3DPawn(hero) {
+      var grp = new THREE.Group();
+
+      var base = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.32, 0.38, 0.12, 20),
+        new THREE.MeshStandardMaterial({ color: hero.accent, metalness: 0.5, roughness: 0.25 })
+      );
+      base.position.y = 0.06;
+      grp.add(base);
+
+      var robe = new THREE.Mesh(
+        new THREE.ConeGeometry(0.28, 0.76, 16),
+        new THREE.MeshStandardMaterial({ color: hero.robe, roughness: 0.45 })
+      );
+      robe.position.y = 0.48;
+      robe.castShadow = true;
+      grp.add(robe);
+
+      // 帶有動態表情貼圖的 3D 頭部
+      var faceTex = createFaceExpressionTexture('happy');
+      var headMat = new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.35 });
+      var head = new THREE.Mesh(new THREE.SphereGeometry(0.23, 18, 18), headMat);
+      head.position.y = 0.98;
+      head.rotation.y = -Math.PI / 2;
+      grp.add(head);
+
+      // 金色聖光環
+      var halo = new THREE.Mesh(
+        new THREE.TorusGeometry(0.17, 0.035, 8, 20),
+        new THREE.MeshBasicMaterial({ color: 0xfde047 })
+      );
+      halo.rotation.x = Math.PI / 2;
+      halo.position.y = 1.28;
+      grp.add(halo);
+
+      grp.userData.headMesh = head;
+      scene.add(grp);
+      return grp;
+    }
+
+    // 即時更新角色 3D 臉部與 HUD 表情
+    function setPlayerExpression(playerIdx, exprKey) {
+      var p = players[playerIdx];
+      if (!p) return;
+      p.expr = exprKey;
+      if (pawnGroups[playerIdx] && pawnGroups[playerIdx].userData.headMesh) {
+        pawnGroups[playerIdx].userData.headMesh.material.map = createFaceExpressionTexture(exprKey);
+        pawnGroups[playerIdx].userData.headMesh.material.needsUpdate = true;
+      }
+      renderPlayersHUD();
+    }
+
+    function buildDice3D() {
+      var order = [2, 5, 1, 6, 3, 4];
+      var mats = [];
+      for (var i = 0; i < order.length; i++) {
+        var cvs = document.createElement('canvas');
+        cvs.width = 128;
+        cvs.height = 128;
+        var ctx = cvs.getContext('2d');
+        ctx.fillStyle = '#fffdf7';
+        ctx.fillRect(0, 0, 128, 128);
+        ctx.strokeStyle = '#d97706';
+        ctx.lineWidth = 10;
+        ctx.strokeRect(5, 5, 118, 118);
+        var n = order[i];
+        ctx.fillStyle = (n === 1 || n === 4) ? '#dc2626' : '#1e1b4b';
+        var pts = {
+          1: [[64, 64]], 2: [[36, 36], [92, 92]], 3: [[32, 32], [64, 64], [96, 96]],
+          4: [[36, 36], [92, 36], [36, 92], [92, 92]], 5: [[34, 34], [94, 34], [64, 64], [34, 94], [94, 94]],
+          6: [[36, 30], [92, 30], [36, 64], [92, 64], [36, 98], [92, 98]]
+        }[n];
+        for (var k = 0; k < pts.length; k++) {
+          ctx.beginPath();
+          ctx.arc(pts[k][0], pts[k][1], 12, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        mats.push(new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(cvs), roughness: 0.25 }));
+      }
+      dice3D = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.95, 0.95), mats);
+      dice3D.position.set(-2.9, 2.4, -3.5);
+      dice3D.castShadow = true;
+      scene.add(dice3D);
+    }
+
+    function update3DBuilding(tileId, ownerIdx, level) {
+      if (buildingGroups[tileId]) {
+        scene.remove(buildingGroups[tileId]);
+        delete buildingGroups[tileId];
+      }
+      if (level <= 0) return;
+      var grp = new THREE.Group();
+      var col = players[ownerIdx].hero.robe;
+
+      if (level === 1) {
+        var altar = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.5), new THREE.MeshStandardMaterial({ color: 0x94a3b8 }));
+        altar.position.y = 0.15;
+        grp.add(altar);
+        var flame = new THREE.Mesh(new THREE.OctahedronGeometry(0.15, 0), new THREE.MeshBasicMaterial({ color: 0xf97316 }));
+        flame.position.y = 0.4;
+        grp.add(flame);
+      } else if (level === 2) {
+        var base = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.36, 0.62), new THREE.MeshStandardMaterial({ color: col }));
+        base.position.y = 0.18;
+        grp.add(base);
+        var roof = new THREE.Mesh(new THREE.ConeGeometry(0.52, 0.4, 4), new THREE.MeshStandardMaterial({ color: 0xfef3c7 }));
+        roof.rotation.y = Math.PI / 4;
+        roof.position.y = 0.55;
+        grp.add(roof);
+      } else {
+        var temple = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.54, 0.74), new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.55, roughness: 0.22 }));
+        temple.position.y = 0.27;
+        grp.add(temple);
+        var dome = new THREE.Mesh(new THREE.SphereGeometry(0.36, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: col }));
+        dome.position.y = 0.54;
+        grp.add(dome);
+        // 天降聖光光柱
+        var beam = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.18, 0.45, 4.4, 16, 1, true),
+          new THREE.MeshBasicMaterial({ color: 0xfde047, transparent: true, opacity: 0.38, side: THREE.DoubleSide, depthWrite: false })
+        );
+        beam.position.y = 2.4;
+        grp.add(beam);
+      }
+
+      var t = BOARD_TILES[tileId];
+      grp.position.set(t.x + 0.32, 0.26, t.z - 0.32);
+      scene.add(grp);
+      buildingGroups[tileId] = grp;
+      spawnParticles3D(grp.position.x, 0.6, grp.position.z, 28, 0xfde047);
+    }
+
+    function spawnParticles3D(x, y, z, count, colorHex) {
+      var geo = new THREE.SphereGeometry(0.075, 6, 6);
+      var mat = new THREE.MeshBasicMaterial({ color: colorHex || 0xfde047 });
+      for (var i = 0; i < count; i++) {
+        var m = new THREE.Mesh(geo, mat);
+        m.position.set(x, y, z);
+        var a = Math.random() * Math.PI * 2;
+        var s = 0.03 + Math.random() * 0.09;
+        m.userData = { vx: Math.cos(a) * s, vy: 0.09 + Math.random() * 0.16, vz: Math.sin(a) * s, life: 1.0 };
+        scene.add(m);
+        particles3D.push(m);
+      }
+    }
+
+    // ============================================================================
+    // 4. 3D 地理名稱與地標投影標籤、觸控鏡頭旋轉
+    // ============================================================================
+    var tileTagEls = [], geoTagEls = [];
+    var GEO_WATER_NAMES = [
+      { name: '地中海', x: -3.8, z: -0.6 },
+      { name: '加利利海', x: 0.5, z: -2.7 },
+      { name: '約旦河', x: 0.85, z: -0.4 },
+      { name: '死海', x: 1.15, z: 2.2 },
+      { name: '西乃曠野', x: -1.4, z: 4.5 }
+    ];
+
+    function initProjectionLabels() {
+      var layer = document.getElementById('projection-layer');
+      layer.innerHTML = '';
+      tileTagEls = [];
+      geoTagEls = [];
+      for (var i = 0; i < BOARD_TILES.length; i++) {
+        var el = document.createElement('div');
+        el.className = 'tile-tag';
+        el.innerText = BOARD_TILES[i].name;
+        layer.appendChild(el);
+        tileTagEls.push(el);
+      }
+      for (var g = 0; g < GEO_WATER_NAMES.length; g++) {
+        var gel = document.createElement('div');
+        gel.className = 'geo-label';
+        gel.innerText = GEO_WATER_NAMES[g].name;
+        layer.appendChild(gel);
+        geoTagEls.push(gel);
+      }
+    }
+
+    function updateProjectionLabels() {
+      if (!camera) return;
+      var w = window.innerWidth, h = window.innerHeight;
+      var v = new THREE.Vector3();
+      for (var i = 0; i < BOARD_TILES.length; i++) {
+        var t = BOARD_TILES[i];
+        v.set(t.x, 0.25, t.z).project(camera);
+        var el = tileTagEls[i];
+        var lm = landmarks[i];
+        if (lm && lm.level > 0) {
+          el.innerText = BUILD_LEVELS[lm.level].icon + t.name + ' L' + lm.level;
+          el.className = 'tile-tag owner-' + lm.owner;
+        } else {
+          el.innerText = t.name;
+          el.className = 'tile-tag';
+        }
+        el.style.left = ((v.x * 0.5 + 0.5) * w) + 'px';
+        el.style.top = ((-v.y * 0.5 + 0.5) * h + 15) + 'px';
+      }
+      for (var g = 0; g < GEO_WATER_NAMES.length; g++) {
+        var gw = GEO_WATER_NAMES[g];
+        v.set(gw.x, 0.1, gw.z).project(camera);
+        geoTagEls[g].style.left = ((v.x * 0.5 + 0.5) * w) + 'px';
+        geoTagEls[g].style.top = ((-v.y * 0.5 + 0.5) * h) + 'px';
+      }
+    }
+
+    function showFloatPopup(tileId, text) {
+      if (!camera) return;
+      var t = BOARD_TILES[tileId];
+      var v = new THREE.Vector3(t.x, 1.35, t.z).project(camera);
+      var div = document.createElement('div');
+      div.className = 'float-text';
+      div.innerText = text;
+      div.style.left = ((v.x * 0.5 + 0.5) * window.innerWidth) + 'px';
+      div.style.top = ((-v.y * 0.5 + 0.5) * window.innerHeight) + 'px';
+      document.getElementById('projection-layer').appendChild(div);
+      setTimeout(function () { if (div.parentNode) div.parentNode.removeChild(div); }, 1500);
+    }
+
+    function bindOrbitTouch(el) {
+      el.addEventListener('touchstart', function (e) {
+        if (e.touches.length === 1) { draggingCam = true; lastX = e.touches[0].clientX; }
+      }, { passive: true });
+      el.addEventListener('touchmove', function (e) {
+        if (draggingCam && e.touches.length === 1) {
+          var dx = e.touches[0].clientX - lastX;
+          lastX = e.touches[0].clientX;
+          camYaw -= dx * 0.0085;
+        }
+      }, { passive: true });
+      el.addEventListener('touchend', function () { draggingCam = false; }, { passive: true });
+      el.addEventListener('mousedown', function (e) { draggingCam = true; lastX = e.clientX; });
+      window.addEventListener('mousemove', function (e) {
+        if (draggingCam) { var dx = e.clientX - lastX; lastX = e.clientX; camYaw -= dx * 0.0085; }
+      });
+      window.addEventListener('mouseup', function () { draggingCam = false; });
+    }
+
+    function toggleCamView() {
+      playSfx('pop');
+      camCloseMode = !camCloseMode;
+      setBanner(camCloseMode ? '🎥 切換為「跟隨角色特寫視角」' : '🗺️ 切換為「以色列全境俯瞰視角」', '單指滑動畫面可隨時旋轉 3D 聖地');
+    }
+
+    var clock3D = new THREE.Clock();
+    function renderLoop3D() {
+      requestAnimationFrame(renderLoop3D);
+      var dt = Math.min(clock3D.getDelta(), 0.05);
+      var elapsed = clock3D.getElapsedTime();
+
+      if (galileeMesh) galileeMesh.material.emissiveIntensity = 0.3 + Math.sin(elapsed * 2.5) * 0.12;
+      if (fishingBoat) {
+        fishingBoat.position.x = 0.5 + Math.sin(elapsed * 1.1) * 0.22;
+        fishingBoat.position.z = -2.7 + Math.cos(elapsed * 1.1) * 0.28;
+        fishingBoat.rotation.y = -elapsed * 1.1;
+      }
+
+      if (dice3D) {
+        if (diceRollAnim.active) {
+          diceRollAnim.t += dt;
+          var p = Math.min(diceRollAnim.t / diceRollAnim.dur, 1);
+          dice3D.rotation.x += 18 * dt;
+          dice3D.rotation.y += 22 * dt;
+          dice3D.position.y = 2.4 + Math.sin(p * Math.PI) * 1.3;
+          if (p >= 1) {
+            diceRollAnim.active = false;
+            dice3D.rotation.set(diceRollAnim.target.x, diceRollAnim.target.y, diceRollAnim.target.z);
+            dice3D.position.y = 2.4;
+          }
+        } else {
+          dice3D.position.y = 2.4 + Math.sin(elapsed * 2.3) * 0.1;
+        }
+      }
+
+      if (pawnHopAnim.active && pawnGroups[pawnHopAnim.idx]) {
+        pawnHopAnim.p += dt / 0.25;
+        var prog = Math.min(pawnHopAnim.p, 1);
+        var pm = pawnGroups[pawnHopAnim.idx];
+        pm.position.x = pawnHopAnim.from.x + (pawnHopAnim.to.x - pawnHopAnim.from.x) * prog;
+        pm.position.z = pawnHopAnim.from.z + (pawnHopAnim.to.z - pawnHopAnim.from.z) * prog;
+        pm.position.y = 0.26 + Math.sin(prog * Math.PI) * 1.05;
+        var sq = 1 + Math.sin(prog * Math.PI) * 0.22;
+        pm.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
+        if (prog >= 1) {
+          pawnHopAnim.active = false;
+          pm.position.set(pawnHopAnim.to.x, 0.26, pawnHopAnim.to.z);
+          pm.scale.set(1, 1, 1);
+          if (pawnHopAnim.done) pawnHopAnim.done();
+        }
+      } else {
+        for (var i = 0; i < pawnGroups.length; i++) {
+          if (pawnGroups[i]) {
+            pawnGroups[i].position.y = 0.26 + Math.abs(Math.sin(elapsed * 3.1 + i)) * 0.06;
+            pawnGroups[i].rotation.y = camYaw - Math.PI / 2;
+          }
+        }
+      }
+
+      if (camera) {
+        var tx = 0, tz = 0.2, rad = 11.8, ht = 11.8;
+        if (camCloseMode && pawnGroups[turnIndex]) {
+          tx = pawnGroups[turnIndex].position.x * 0.65;
+          tz = pawnGroups[turnIndex].position.z * 0.65;
+          rad = 7.4;
+          ht = 7.4;
+        }
+        camera.position.x += (tx + Math.sin(camYaw) * rad - camera.position.x) * 0.1;
+        camera.position.z += (tz + Math.cos(camYaw) * rad - camera.position.z) * 0.1;
+        camera.position.y += (ht - camera.position.y) * 0.1;
+        camera.lookAt(tx, 0.2, tz);
+      }
+
+      for (var k = particles3D.length - 1; k >= 0; k--) {
+        var pt = particles3D[k];
+        pt.position.x += pt.userData.vx;
+        pt.position.y += pt.userData.vy;
+        pt.position.z += pt.userData.vz;
+        pt.userData.vy -= 0.005;
+        pt.userData.life -= dt * 1.05;
+        pt.scale.setScalar(Math.max(0.01, pt.userData.life));
+        if (pt.userData.life <= 0) {
+          scene.remove(pt);
+          particles3D.splice(k, 1);
+        }
+      }
+
+      updateProjectionLabels();
+      renderer.render(scene, camera);
+    }
+
+    // ============================================================================
+    // 5. 全螢幕神蹟特效影片播放器 (HTML5 Canvas 電影級動態演出 + 可隨時略過)
+    // ============================================================================
+    var csAnimId = null;
+    var csDoneCallback = null;
+    var lastCutsceneData = {
+      type: 'creation',
+      badge: '🌅 救恩歷史第一章 • 特效影片',
+      chapSub: '第一章：創世與列祖 (創世記)',
+      title: '起初神創造天地，說：要有光！就有了光',
+      verse: '「神看著一切所造的都甚好。」（創世記 1:31）'
+    };
+
+    function playCinematicCutscene(data, onFinish) {
+      lastCutsceneData = data;
+      csDoneCallback = onFinish || null;
+
+      document.getElementById('cs-badge').innerText = data.badge;
+      document.getElementById('cs-chapter-sub').innerText = data.chapSub;
+      document.getElementById('cs-title').innerText = data.title;
+      document.getElementById('cs-verse').innerText = data.verse;
+
+      var layer = document.getElementById('cutscene-layer');
+      layer.classList.add('active');
+      playSfx('cutscene');
+
+      var cvs = document.getElementById('cutscene-canvas');
+      cvs.width = window.innerWidth;
+      cvs.height = window.innerHeight;
+      var ctx = cvs.getContext('2d');
+
+      var startTime = performance.now();
+      var duration = 3400;
+      var sparks = [];
+      for (var i = 0; i < 65; i++) {
+        sparks.push({
+          x: Math.random() * cvs.width,
+          y: Math.random() * cvs.height,
+          r: 1.5 + Math.random() * 4,
+          vx: (Math.random() - 0.5) * 3,
+          vy: -1 - Math.random() * 3.5
+        });
+      }
+
+      function drawFrame(now) {
+        var elapsed = now - startTime;
+        var t = Math.min(elapsed / duration, 1);
+        var w = cvs.width, h = cvs.height, cx = w / 2, cy = h / 2;
+
+        ctx.clearRect(0, 0, w, h);
+
+        if (data.type === 'redsea') {
+          // 紅海分開：左右巨大水牆分開，中間出現乾地與金色光路
+          var bg = ctx.createLinearGradient(0, 0, 0, h);
+          bg.addColorStop(0, '#020617');
+          bg.addColorStop(0.5, '#0369a1');
+          bg.addColorStop(1, '#fef08a');
+          ctx.fillStyle = bg;
+          ctx.fillRect(0, 0, w, h);
+
+          var gap = Math.min(w * 0.28, t * w * 0.34);
+          ctx.fillStyle = 'rgba(14, 165, 233, 0.85)';
+          ctx.fillRect(0, cy - 140, cx - gap, 280);
+          ctx.fillRect(cx + gap, cy - 140, cx - gap, 280);
+
+          // 海浪白沫
+          ctx.fillStyle = '#e0f2fe';
+          for (var wy = -130; wy <= 130; wy += 26) {
+            ctx.beginPath();
+            ctx.arc(cx - gap, cy + wy + Math.sin(t * 15 + wy) * 6, 12, 0, Math.PI * 2);
+            ctx.arc(cx + gap, cy + wy + Math.cos(t * 15 + wy) * 6, 12, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.font = '72px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('🪄', cx, cy + 20);
+        } else if (data.type === 'goliath') {
+          // 大衛戰歌利亞：信心甩石金光飛向巨人
+          var gBg = ctx.createRadialGradient(cx, cy, 20, cx, cy, Math.max(w, h) * 0.7);
+          gBg.addColorStop(0, '#fef08a');
+          gBg.addColorStop(0.45, '#b45309');
+          gBg.addColorStop(1, '#1e1b4b');
+          ctx.fillStyle = gBg;
+          ctx.fillRect(0, 0, w, h);
+
+          var stoneX = (cx - 110) + t * 220;
+          var stoneY = cy + 30 - Math.sin(t * Math.PI) * 90;
+          ctx.strokeStyle = '#fde047';
+          ctx.lineWidth = 5;
+          ctx.beginPath();
+          ctx.moveTo(cx - 110, cy + 30);
+          ctx.lineTo(stoneX, stoneY);
+          ctx.stroke();
+
+          ctx.font = '68px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('👑', cx - 115, cy + 45);
+          ctx.fillText('🪨', stoneX, stoneY);
+          ctx.fillText(t > 0.75 ? '💥' : '🛡️', cx + 115, cy + 25);
+        } else {
+          // 創世大光 / 復活榮耀光柱
+          var rBg = ctx.createRadialGradient(cx, cy, 10, cx, cy, Math.max(w, h) * 0.75);
+          rBg.addColorStop(0, '#ffffff');
+          rBg.addColorStop(0.35, '#fde047');
+          rBg.addColorStop(0.75, '#d97706');
+          rBg.addColorStop(1, '#090d16');
+          ctx.fillStyle = rBg;
+          ctx.fillRect(0, 0, w, h);
+
+          // 旋轉榮耀光芒射線
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(t * Math.PI);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+          for (var r = 0; r < 12; r++) {
+            ctx.rotate(Math.PI / 6);
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(-24, -Math.max(w, h));
+            ctx.lineTo(24, -Math.max(w, h));
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.restore();
+
+          ctx.font = '82px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(data.type === 'resurrection' ? '✝️' : '🌅', cx, cy + 28);
+        }
+
+        // 飄散金色聖光粒子
+        ctx.fillStyle = '#fef9c3';
+        for (var s = 0; s < sparks.length; s++) {
+          var sp = sparks[s];
+          sp.x += sp.vx;
+          sp.y += sp.vy;
+          if (sp.y < 0) sp.y = h;
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, sp.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        if (t < 1) {
+          csAnimId = requestAnimationFrame(drawFrame);
+        } else {
+          finishCutscene();
+        }
+      }
+
+      csAnimId = requestAnimationFrame(drawFrame);
+    }
+
+    function skipCutscene() {
+      playSfx('pop');
+      finishCutscene();
+    }
+
+    function finishCutscene() {
+      if (csAnimId) {
+        cancelAnimationFrame(csAnimId);
+        csAnimId = null;
+      }
+      document.getElementById('cutscene-layer').classList.remove('active');
+      var cb = csDoneCallback;
+      csDoneCallback = null;
+      if (cb) cb();
+    }
+
+    function replayLastCutscene() {
+      if (busyFlag) return;
+      initAudio();
+      playCinematicCutscene(lastCutsceneData, null);
+    }
+
+    // ============================================================================
+    // 6. 核心遊戲邏輯（救恩四章節推進、人物表情切換、箴言收藏、問答與分享）
+    // ============================================================================
+    var players = [];
+    var turnIndex = 0;
+    var busyFlag = false;
+    var landmarks = {};
+    var unlockedChapter = 1;
+    var collectedProverbs = [];
+    var usedQuizList = [];
+    var lineShareCache = '';
+
+    function renderStartCharacters() {
+      var grid = document.getElementById('char-grid');
+      var html = '';
+      for (var i = 0; i < BIBLICAL_HEROES.length; i++) {
+        var h = BIBLICAL_HEROES[i];
+        var sel = (i === selectedCharIndex);
+        html +=
+          '<button type="button" onclick="selectHero(' + i + ')" class="p-2.5 rounded-2xl border-2 text-left ' +
+            (sel ? 'border-amber-600 bg-amber-50 shadow-md' : 'border-slate-200 bg-white') + '">' +
+            '<div class="text-xs font-black text-slate-900">' + h.icon + ' ' + h.name + '</div>' +
+            '<div class="text-[10px] font-extrabold text-amber-700 mt-0.5">初始: 🪙' + h.coins + ' | ❤️' + h.faith + '</div>' +
+            '<div class="text-[10px] text-slate-600 leading-tight mt-0.5">' + h.skill + '</div>' +
+          '</button>';
+      }
+      grid.innerHTML = html;
+    }
+
+    function setGameMode(mode) {
+      initAudio();
+      playSfx('pop');
+      gameMode = mode;
+      var btnAi = document.getElementById('mode-ai');
+      var btn2p = document.getElementById('mode-2p');
+      btnAi.className = mode === 'ai'
+        ? 'py-2.5 px-2 rounded-xl border-2 border-amber-600 bg-amber-400 text-slate-950 font-black text-xs shadow'
+        : 'py-2.5 px-2 rounded-xl border-2 border-slate-300 bg-white text-slate-700 font-black text-xs';
+      btn2p.className = mode === '2p'
+        ? 'py-2.5 px-2 rounded-xl border-2 border-amber-600 bg-amber-400 text-slate-950 font-black text-xs shadow'
+        : 'py-2.5 px-2 rounded-xl border-2 border-slate-300 bg-white text-slate-700 font-black text-xs';
+    }
+
+    function selectHero(idx) {
+      initAudio();
+      playSfx('pop');
+      selectedCharIndex = idx;
+      renderStartCharacters();
+    }
+
+    function openStartOverlay() {
+      playSfx('pop');
+      closeModal('event-modal');
+      closeModal('timeline-modal');
+      closeModal('proverbs-modal');
+      closeModal('victory-modal');
+      document.getElementById('hud-layer').classList.add('hidden');
+      document.getElementById('hud-layer').classList.remove('flex');
+      document.getElementById('start-overlay').classList.remove('hidden');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    function getPawnCoords(tileId, pIdx) {
+      var t = BOARD_TILES[tileId];
+      var off = pIdx === 0 ? { dx: -0.22, dz: -0.14 } : { dx: 0.22, dz: 0.14 };
+      return { x: t.x + off.dx, z: t.z + off.dz };
+    }
+
+    function startNewGame() {
+      initAudio();
+      playSfx('build');
+
+      for (var i = 0; i < pawnGroups.length; i++) {
+        if (pawnGroups[i]) scene.remove(pawnGroups[i]);
+      }
+      pawnGroups = [];
+      for (var k in buildingGroups) {
+        if (buildingGroups.hasOwnProperty(k)) scene.remove(buildingGroups[k]);
+      }
+      buildingGroups = {};
+      landmarks = {};
+      unlockedChapter = 1;
+      collectedProverbs = [];
+      usedQuizList = [];
+
+      var h1 = BIBLICAL_HEROES[selectedCharIndex];
+      var h2 = BIBLICAL_HEROES[(selectedCharIndex + 1) % BIBLICAL_HEROES.length];
+
+      players = [
+        { id: 0, name: 'P1 ' + h1.name.slice(-2), hero: h1, pos: 0, coins: h1.coins, faith: h1.faith, expr: 'happy', isAI: false, bar: '#2563eb' },
+        { id: 1, name: (gameMode === 'ai' ? 'AI ' : 'P2 ') + h2.name.slice(-2), hero: h2, pos: 0, coins: h2.coins, faith: h2.faith, expr: 'happy', isAI: (gameMode === 'ai'), bar: '#e11d48' }
+      ];
+
+      for (var p = 0; p < players.length; p++) {
+        var mesh = createHero3DPawn(players[p].hero);
+        var pos = getPawnCoords(0, p);
+        mesh.position.set(pos.x, 0.26, pos.z);
+        pawnGroups.push(mesh);
+      }
+
+      turnIndex = 0;
+      busyFlag = true;
+
+      document.getElementById('start-overlay').classList.add('hidden');
+      document.getElementById('victory-modal').classList.add('hidden');
+      document.getElementById('hud-layer').classList.remove('hidden');
+      document.getElementById('hud-layer').classList.add('flex');
+
+      updateChapterHUD(1);
+      renderPlayersHUD();
+
+      // 開局播放「第一章：創世記」序幕特效影片
+      playCinematicCutscene({
+        type: 'creation',
+        badge: '🌅 救恩歷史第一章 • 序幕影片',
+        chapSub: STORY_CHAPTERS[0].title,
+        title: '神說：要有光！踏上從創世到啟示錄的信心旅程',
+        verse: STORY_CHAPTERS[0].verse
+      }, function () {
+        busyFlag = false;
+        renderPlayersHUD();
+        setBanner('🌅 第一章：創世與列祖', '輪到 ' + players[0].name + '，點擊下方擲 3D 骰子前進！');
+      });
+    }
+
+    function updateChapterHUD(chapNum) {
+      if (chapNum > unlockedChapter) unlockedChapter = chapNum;
+      var ch = STORY_CHAPTERS[chapNum - 1] || STORY_CHAPTERS[0];
+      document.getElementById('hud-chap-icon').innerText = ch.icon;
+      document.getElementById('hud-chap-title').innerText = ch.title;
+    }
+
+    function renderPlayersHUD() {
+      var box = document.getElementById('hud-players');
+      var html = '';
+      for (var i = 0; i < players.length; i++) {
+        var p = players[i];
+        var isCur = (i === turnIndex);
+        var expObj = EXPRESSIONS[p.expr] || EXPRESSIONS.happy;
+        var pct = Math.min(100, Math.round((p.faith / TARGET_FAITH) * 100));
+        html +=
+          '<div class="rounded-2xl px-2.5 py-1.5 border-2 transition-all ' +
+            (isCur ? 'bg-amber-50 border-amber-500 shadow-md' : 'bg-white/95 border-slate-300') + '">' +
+            '<div class="flex items-center justify-between">' +
+              '<span class="text-xs font-black text-slate-900">' + p.hero.icon + ' ' + p.name + '</span>' +
+              '<span class="text-base" title="' + expObj.label + '">' + expObj.emoji + '</span>' +
+            '</div>' +
+            '<div class="flex items-center justify-between text-[11px] font-extrabold mt-0.5">' +
+              '<span class="text-amber-700">🪙' + p.coins + '</span>' +
+              '<span class="text-rose-700">❤️' + p.faith + '/' + TARGET_FAITH + '</span>' +
+            '</div>' +
+            '<div class="w-full h-1.5 bg-slate-200 rounded-full mt-1 overflow-hidden">' +
+              '<div class="h-full rounded-full transition-all duration-300" style="width:' + pct + '%;background:' + p.bar + ';"></div>' +
+            '</div>' +
+          '</div>';
+      }
+      box.innerHTML = html;
+
+      document.getElementById('hud-prov-count').innerText = collectedProverbs.length;
+
+      var btn = document.getElementById('btn-roll');
+      var txt = document.getElementById('btn-roll-text');
+      var cur = players[turnIndex];
+      if (cur.isAI) {
+        btn.disabled = true;
+        txt.innerText = cur.name + ' 思考中...';
+      } else {
+        btn.disabled = busyFlag;
+        txt.innerText = cur.name + ' 擲 3D 骰子';
+      }
+    }
+
+    function setBanner(title, sub) {
+      document.getElementById('hud-msg-title').innerText = title;
+      document.getElementById('hud-msg-sub').innerText = sub;
+    }
+
+    function addFaith(p, base) {
+      if (base <= 0) return 0;
+      var total = base + (p.hero.id === 'david' ? 1 : 0);
+      p.faith += total;
+      return total;
+    }
+
+    function addCoins(p, delta) {
+      if (delta >= 0) {
+        p.coins += delta;
+        return delta;
+      } else {
+        var lost = Math.min(p.coins, Math.abs(delta));
+        p.coins -= lost;
+        return -lost;
+      }
+    }
+
+    // ============================================================================
+    // 7. 擲 3D 骰子與棋子拋物線跳躍步進
+    // ============================================================================
+    function handleRollClick() {
+      if (busyFlag || players[turnIndex].isAI) return;
+      initAudio();
+      rollDiceSequence();
+    }
+
+    function rollDiceSequence() {
+      busyFlag = true;
+      setPlayerExpression(turnIndex, 'happy');
+      renderPlayersHUD();
+      playSfx('dice');
+
+      var steps = Math.floor(Math.random() * 4) + 1;
+      var rots = {
+        1: { x: 0, y: 0, z: 0 },
+        2: { x: 0, y: 0, z: Math.PI / 2 },
+        3: { x: -Math.PI / 2, y: 0, z: 0 },
+        4: { x: Math.PI / 2, y: 0, z: 0 }
+      };
+      diceRollAnim.active = true;
+      diceRollAnim.t = 0;
+      diceRollAnim.target = rots[steps];
+
+      setBanner('🎲 3D 骰子擲出 ' + steps + ' 點！', players[turnIndex].name + ' 沿著救恩故事線前進...');
+
+      setTimeout(function () {
+        movePawnStep(steps);
+      }, 760);
+    }
+
+    function movePawnStep(rem) {
+      if (rem <= 0) {
+        handleTileLanding();
+        return;
+      }
+
+      var p = players[turnIndex];
+      var from = getPawnCoords(p.pos, turnIndex);
+      p.pos = (p.pos + 1) % BOARD_TILES.length;
+      var to = getPawnCoords(p.pos, turnIndex);
+      var tile = BOARD_TILES[p.pos];
+
+      playSfx(tile.water ? 'splash' : 'boing');
+      pawnHopAnim.active = true;
+      pawnHopAnim.idx = turnIndex;
+      pawnHopAnim.from = from;
+      pawnHopAnim.to = to;
+      pawnHopAnim.p = 0;
+      pawnHopAnim.done = function () {
+        spawnParticles3D(to.x, 0.3, to.z, 8, tile.water ? 0x38bdf8 : 0xffffff);
+
+        if (tile.water && p.hero.id === 'peter') {
+          addCoins(p, 120);
+          showFloatPopup(p.pos, '⛵漁網祝福 +120🪙');
+          renderPlayersHUD();
+        }
+
+        if (p.pos === 0) {
+          var bonus = (p.hero.id === 'esther') ? 400 : 220;
+          addCoins(p, bonus);
+          var fg = addFaith(p, 2);
+          playSfx('coin');
+          setPlayerExpression(turnIndex, 'amazed');
+          showFloatPopup(0, '🌅聖城祝福 +' + bonus + '🪙 +' + fg + '❤️');
+          spawnParticles3D(to.x, 0.9, to.z, 25, 0xfde047);
+          renderPlayersHUD();
+          if (checkVictory()) return;
+        }
+
+        setTimeout(function () {
+          movePawnStep(rem - 1);
+        }, 80);
+      };
+    }
+
+    // ============================================================================
+    // 8. 抵達地標事件（章節解鎖影片、聖經箴言、神蹟建造、試煉問答）
+    // ============================================================================
+    function scriptureBoxHtml(verse, refTitle) {
+      return '<div class="proverb-scroll rounded-xl p-3 my-2.5 text-left">' +
+               '<div class="text-[11px] font-black text-amber-900 mb-1">📖 ' + (refTitle || '聖經經文') + '</div>' +
+               '<div class="text-xs sm:text-sm font-extrabold text-amber-950 leading-relaxed">' + verse + '</div>' +
+             '</div>';
+    }
+
+    function handleTileLanding() {
+      var p = players[turnIndex];
+      var tile = BOARD_TILES[p.pos];
+      var prevUnlocked = unlockedChapter;
+      updateChapterHUD(tile.chap);
+
+      // 若首次推進到新的救恩歷史章節，先播放該章節的故事介紹！
+      var isNewChapter = (tile.chap > prevUnlocked);
+
+      function runTileEvent() {
+        if (tile.type === 'start') {
+          var stay = (p.hero.id === 'esther') ? 300 : 150;
+          addCoins(p, stay);
+          playSfx('coin');
+          setPlayerExpression(turnIndex, 'happy');
+          showFloatPopup(0, '+' + stay + '🪙');
+          renderPlayersHUD();
+          if (p.isAI) {
+            setBanner('🌅 ' + p.name + ' 停留聖城', '獲得 +' + stay + ' 🪙');
+            setTimeout(nextTurn, 1000);
+            return;
+          }
+          openEventModal({
+            badge: '🌅 第一章 • 聖城起點',
+            icon: tile.icon,
+            title: tile.name,
+            body: '<p>' + tile.story + '</p>' + scriptureBoxHtml(tile.verse, '創世記 1:31') + '<strong>獲得恩典祝福：+' + stay + ' 恩典幣！</strong>',
+            actions: [{ label: '阿們！感謝讚美主 ✨', style: 'primary', fn: nextTurn }]
+          });
+        } else if (tile.type === 'miracle') {
+          setPlayerExpression(turnIndex, 'amazed');
+          var csMap = {
+            redsea: {
+              type: 'redsea',
+              badge: '🌊 第二章神蹟特寫影片',
+              chapSub: '第二章：出埃及與律法 (出埃及記)',
+              title: '摩西向海伸杖，紅海分開成為乾地！',
+              verse: tile.verse
+            },
+            goliath: {
+              type: 'goliath',
+              badge: '🪨 第三章神蹟特寫影片',
+              chapSub: '第三章：王國與先知 (撒母耳記上)',
+              title: '大衛靠萬軍之耶和華戰勝巨人歌利亞！',
+              verse: tile.verse
+            },
+            resurrection: {
+              type: 'resurrection',
+              badge: '✝️ 第四章救恩最高潮影片',
+              chapSub: '第四章：福音與新天新地 (四福音)',
+              title: '主耶穌戰勝死亡復活，榮耀真光照耀世界！',
+              verse: tile.verse
+            }
+          };
+          playCinematicCutscene(csMap[tile.cutscene], function () {
+            handleLandmarkTile(p, tile);
+          });
+        } else if (tile.type === 'story') {
+          handleLandmarkTile(p, tile);
+        } else if (tile.type === 'proverb') {
+          handleProverbEvent(p, tile);
+        } else if (tile.type === 'trial') {
+          handleTrialEvent(p, tile);
+        }
+      }
+
+      if (isNewChapter && !p.isAI) {
+        var chObj = STORY_CHAPTERS[tile.chap - 1];
+        setPlayerExpression(turnIndex, 'amazed');
+        playSfx('harp');
+        openEventModal({
+          badge: '📖 救恩歷史推進！解鎖新章節',
+          icon: chObj.icon,
+          title: chObj.title,
+          body: '<div class="text-xs font-black text-amber-800 mb-1">' + chObj.era + '</div>' +
+                '<p class="text-left">' + chObj.summary + '</p>' +
+                scriptureBoxHtml(chObj.verse, '章節核心金句'),
+          actions: [{ label: '進入本節聖經事件 🚀', style: 'primary', fn: runTileEvent }]
+        });
+      } else {
+        runTileEvent();
+      }
+    }
+
+    function handleLandmarkTile(p, tile) {
+      var lm = landmarks[tile.id];
+      var discount = (p.hero.id === 'paul') ? 0.8 : 1.0;
+
+      if (!lm) {
+        var cost = Math.round(tile.cost * discount);
+        var canBuy = p.coins >= cost;
+
+        if (p.isAI) {
+          if (canBuy) {
+            addCoins(p, -cost);
+            landmarks[tile.id] = { owner: p.id, level: 1 };
+            update3DBuilding(tile.id, p.id, 1);
+            var f1 = addFaith(p, BUILD_LEVELS[1].faith);
+            playSfx('build');
+            setPlayerExpression(turnIndex, 'amazed');
+            showFloatPopup(tile.id, '⛩️石壇 +' + f1 + '❤️');
+            renderPlayersHUD();
+            setBanner('⛩️ ' + p.name + ' 築起石壇', '在【' + tile.name + '】獲得 +' + f1 + ' ❤️');
+          } else {
+            addFaith(p, 1);
+            renderPlayersHUD();
+            setBanner('📖 ' + p.name + ' 默想聖經故事', '獲得 +1 ❤️');
+          }
+          setTimeout(nextTurn, 1050);
+          return;
+        }
+
+        var acts = [];
+        if (canBuy) {
+          acts.push({
+            label: '⛩️ 建造 3D 石壇 Lv.1 (-' + cost + ' 🪙 / +' + BUILD_LEVELS[1].faith + ' ❤️)',
+            style: 'primary',
+            fn: function () {
+              addCoins(p, -cost);
+              landmarks[tile.id] = { owner: p.id, level: 1 };
+              update3DBuilding(tile.id, p.id, 1);
+              var fb = addFaith(p, BUILD_LEVELS[1].faith);
+              playSfx('build');
+              setPlayerExpression(turnIndex, 'amazed');
+              showFloatPopup(tile.id, '⛩️石壇落成 +' + fb + '❤️');
+              renderPlayersHUD();
+              nextTurn();
+            }
+          });
+        }
+        acts.push({
+          label: canBuy ? '先默想聖經故事 (+1 ❤️)' : '恩典幣不足，默想經文 (+1 ❤️)',
+          style: 'secondary',
+          fn: function () {
+            var fm = addFaith(p, 1);
+            playSfx('pop');
+            showFloatPopup(tile.id, '+' + fm + '❤️');
+            renderPlayersHUD();
+            nextTurn();
+          }
+        });
+
+        openEventModal({
+          badge: '第 ' + tile.chap + ' 章 • 聖經地標',
+          icon: tile.icon,
+          title: tile.name,
+          body: '<p>' + tile.story + '</p>' + scriptureBoxHtml(tile.verse, tile.name),
+          actions: acts
+        });
+        return;
+      }
+
+      if (lm.owner === p.id) {
+        if (lm.level < 3) {
+          var nextLv = lm.level + 1;
+          var lvData = BUILD_LEVELS[nextLv];
+          var upCost = Math.round(tile.cost * (nextLv === 2 ? 0.9 : 1.15) * discount);
+          var canUp = p.coins >= upCost;
+
+          if (p.isAI) {
+            if (canUp) {
+              addCoins(p, -upCost);
+              lm.level = nextLv;
+              update3DBuilding(tile.id, p.id, nextLv);
+              var fu = addFaith(p, lvData.faith);
+              playSfx('build');
+              setPlayerExpression(turnIndex, 'amazed');
+              showFloatPopup(tile.id, lvData.icon + '升級 +' + fu + '❤️');
+              renderPlayersHUD();
+              setBanner(lvData.icon + ' ' + p.name + ' 升級 ' + lvData.name, '獲得 +' + fu + ' ❤️');
+            } else {
+              addFaith(p, 1);
+              renderPlayersHUD();
+              setBanner('🙌 ' + p.name + ' 數算主恩', '獲得 +1 ❤️');
+            }
+            setTimeout(nextTurn, 1050);
+            return;
+          }
+
+          var upActs = [];
+          if (canUp) {
+            upActs.push({
+              label: lvData.icon + ' 升級為 3D【' + lvData.name + ' Lv.' + nextLv + '】(-' + upCost + ' 🪙 / +' + lvData.faith + ' ❤️)',
+              style: 'primary',
+              fn: function () {
+                addCoins(p, -upCost);
+                lm.level = nextLv;
+                update3DBuilding(tile.id, p.id, nextLv);
+                var fu2 = addFaith(p, lvData.faith);
+                playSfx('build');
+                setPlayerExpression(turnIndex, 'amazed');
+                showFloatPopup(tile.id, lvData.icon + lvData.name + ' +' + fu2 + '❤️');
+                renderPlayersHUD();
+                nextTurn();
+              }
+            });
+          }
+          upActs.push({
+            label: '維持現狀並敬拜 (+2 ❤️)',
+            style: 'secondary',
+            fn: function () {
+              var fw = addFaith(p, 2);
+              playSfx('coin');
+              showFloatPopup(tile.id, '+' + fw + '❤️');
+              renderPlayersHUD();
+              nextTurn();
+            }
+          });
+
+          openEventModal({
+            badge: '3D 聖殿建築升級 • 目前 Lv.' + lm.level,
+            icon: lvData.icon,
+            title: '擴建【' + tile.name + '】',
+            body: '目前建築：<strong>3D ' + BUILD_LEVELS[lm.level].name + '</strong><br />升至 Lv.3 黃金聖殿將降下衝天聖光柱！' + scriptureBoxHtml(tile.verse, tile.name),
+            actions: upActs
+          });
+        } else {
+          var fMax = addFaith(p, 3);
+          var cMax = addCoins(p, 100);
+          playSfx('build');
+          setPlayerExpression(turnIndex, 'amazed');
+          showFloatPopup(tile.id, '🏛️聖殿榮耀 +' + fMax + '❤️');
+          renderPlayersHUD();
+          if (p.isAI) {
+            setBanner('🏛️ ' + p.name + ' 造訪黃金聖殿', '獲得 +' + fMax + ' ❤️ 與 +' + cMax + ' 🪙');
+            setTimeout(nextTurn, 1000);
+            return;
+          }
+          openEventModal({
+            badge: '🏛️ 最高榮耀聖殿 (Lv.3)',
+            icon: '🏛️',
+            title: tile.name + '黃金聖殿',
+            body: '耶和華的榮光充滿這殿！獻上感恩祭獲得 <strong>+' + fMax + ' ❤️</strong> 與 <strong>+' + cMax + ' 🪙</strong>！' + scriptureBoxHtml(tile.verse, tile.name),
+            actions: [{ label: '哈利路亞！🙌', style: 'primary', fn: nextTurn }]
+          });
+        }
+        return;
+      }
+
+      // 經過對手地標 -> 彼此代禱奉獻
+      var owner = players[lm.owner];
+      var lvObj = BUILD_LEVELS[lm.level];
+      var paid = Math.abs(addCoins(p, -lvObj.toll));
+      addCoins(owner, paid);
+      var ruthExtra = (p.hero.id === 'ruth' || owner.hero.id === 'ruth') ? 1 : 0;
+      var myF = addFaith(p, lvObj.tollFaith + ruthExtra);
+      var owF = addFaith(owner, lvObj.tollFaith + ruthExtra);
+      playSfx('coin');
+      setPlayerExpression(turnIndex, 'happy');
+      showFloatPopup(tile.id, '🙏彼此代禱 +' + myF + '❤️');
+      renderPlayersHUD();
+
+      if (p.isAI) {
+        setBanner('🙏 彼此代禱祝福', p.name + ' 奉獻 ' + paid + ' 🪙，雙方信心皆提升！');
+        setTimeout(nextTurn, 1050);
+        return;
+      }
+
+      openEventModal({
+        badge: lvObj.icon + ' 肢體代禱 (Lv.' + lm.level + ' ' + lvObj.name + ')',
+        icon: '🙏',
+        title: '造訪 ' + owner.name + ' 的【' + tile.name + '】',
+        body: '<p>' + tile.story + '</p>' + scriptureBoxHtml(tile.verse, tile.name) +
+              '<p class="bg-amber-100 p-2 rounded-xl text-xs font-extrabold">奉獻 <strong>' + paid + ' 恩典幣</strong> 支持事工：你獲得 <strong>+' + myF + ' ❤️</strong>，' + owner.name + ' 獲得 <strong>+' + owF + ' ❤️</strong>！</p>',
+        actions: [{ label: '阿們！彼此祝福 🤝', style: 'primary', fn: nextTurn }]
+      });
+    }
+
+    // 抽取《聖經箴言》智慧卷軸
+    function handleProverbEvent(p, tile) {
+      var pv = PROVERBS_BOOK[Math.floor(Math.random() * PROVERBS_BOOK.length)];
+      var exists = false;
+      for (var i = 0; i < collectedProverbs.length; i++) {
+        if (collectedProverbs[i].ref === pv.ref) exists = true;
+      }
+      if (!exists) collectedProverbs.push(pv);
+
+      var extra = (p.hero.id === 'esther') ? 180 : 0;
+      var cAdd = addCoins(p, pv.coins + extra);
+      var fAdd = addFaith(p, pv.faith);
+      playSfx('harp');
+      setPlayerExpression(turnIndex, 'amazed');
+      showFloatPopup(p.pos, '📜' + pv.ref + ' +' + fAdd + '❤️');
+      renderPlayersHUD();
+
+      if (p.isAI) {
+        setBanner('📜 ' + p.name + ' 領受【' + pv.ref + '】', '獲得 +' + cAdd + ' 🪙 與 +' + fAdd + ' ❤️');
+        setTimeout(nextTurn, 1050);
+        return;
+      }
+
+      openEventModal({
+        badge: '📜 聖經箴言智慧卷軸 ✨',
+        icon: '📜',
+        title: pv.title + '（' + pv.ref + '）',
+        body: scriptureBoxHtml(pv.text, pv.ref) +
+              '<p class="text-xs text-slate-600 mb-2">💡 生活亮光：' + pv.reflect + '</p>' +
+              '<p class="font-black text-amber-800">領受智慧祝福：+' + cAdd + ' 🪙 | +' + fAdd + ' ❤️</p>',
+        actions: [{ label: '阿們！收錄至箴言寶庫 🙌', style: 'primary', fn: nextTurn }]
+      });
+    }
+
+    // 試煉格（表情切換為 😰 試煉警醒，觸發摩西天賦或聖經問答化解）
+    function handleTrialEvent(p, tile) {
+      setPlayerExpression(turnIndex, 'nervous');
+      playSfx('trial');
+      document.body.classList.add('screen-shake');
+      setTimeout(function () { document.body.classList.remove('screen-shake'); }, 500);
+
+      if (p.hero.id === 'moses' && Math.random() < 0.75) {
+        var fm = addFaith(p, 2);
+        playSfx('harp');
+        setPlayerExpression(turnIndex, 'amazed');
+        showFloatPopup(p.pos, '🪄摩西分開試煉 +' + fm + '❤️');
+        renderPlayersHUD();
+        if (p.isAI) {
+          setBanner('🪄 摩西天賦發動！', '舉杖分開試煉反獲 +' + fm + ' ❤️');
+          setTimeout(nextTurn, 1050);
+          return;
+        }
+        openEventModal({
+          badge: '🪄 領袖摩西天賦發動！',
+          icon: '🪄',
+          title: '靠主開路勝過試煉',
+          body: scriptureBoxHtml(tile.verse, tile.name) + '摩西伸杖禱告化解試煉，並反獲 <strong>+' + fm + ' 信心值</strong>！',
+          actions: [{ label: '哈利路亞！感謝主 ✨', style: 'primary', fn: nextTurn }]
+        });
+        return;
+      }
+
+      if (p.isAI) {
+        var ok = Math.random() < 0.65;
+        if (ok) {
+          var fw = addFaith(p, 4);
+          var cw = addCoins(p, 120);
+          playSfx('coin');
+          setPlayerExpression(turnIndex, 'happy');
+          showFloatPopup(p.pos, '🌟答對 +' + fw + '❤️');
+          setBanner('📖 ' + p.name + ' 憑神的話勝過試煉！', '獲得 +' + fw + ' ❤️ 與 +' + cw + ' 🪙');
+        } else {
+          addCoins(p, -60);
+          addFaith(p, 1);
+          setBanner('🔥 ' + p.name + ' 經歷試煉熬煉', '花費 60 🪙，信心 +1 ❤️');
+        }
+        renderPlayersHUD();
+        setTimeout(nextTurn, 1050);
+        return;
+      }
+
+      if (usedQuizList.length >= BIBLE_QUIZZES.length) usedQuizList = [];
+      var qIdx;
+      do { qIdx = Math.floor(Math.random() * BIBLE_QUIZZES.length); } while (usedQuizList.indexOf(qIdx) !== -1);
+      usedQuizList.push(qIdx);
+      var qItem = BIBLE_QUIZZES[qIdx];
+
+      var prefixes = ['A', 'B', 'C'];
+      var acts = [];
+      for (var i = 0; i < qItem.opts.length; i++) {
+        (function (optIdx) {
+          acts.push({
+            label: prefixes[optIdx] + '. ' + qItem.opts[optIdx],
+            style: 'opt',
+            fn: function () {
+              if (optIdx === qItem.ans) {
+                var fr = addFaith(p, 4);
+                var cr = addCoins(p, 150);
+                playSfx('harp');
+                setPlayerExpression(turnIndex, 'amazed');
+                showFloatPopup(p.pos, '🌟勝過試煉 +' + fr + '❤️');
+                renderPlayersHUD();
+                openEventModal({
+                  badge: '🎉 靠神的話語勝過試煉！',
+                  icon: '🌟',
+                  title: '熟讀聖經（' + qItem.ref + '）',
+                  body: '恭喜答對！表情轉為喜樂敬畏，獲得 <strong>+' + fr + ' ❤️</strong> 與 <strong>+' + cr + ' 🪙</strong>！',
+                  actions: [{ label: '感謝主！繼續前進 🙌', style: 'primary', fn: nextTurn }]
+                });
+              } else {
+                addCoins(p, -60);
+                var fe = addFaith(p, 1);
+                playSfx('pop');
+                setPlayerExpression(turnIndex, 'happy');
+                showFloatPopup(p.pos, '熬煉成長 +' + fe + '❤️');
+                renderPlayersHUD();
+                openEventModal({
+                  badge: '📖 正確經文揭曉（' + qItem.ref + '）',
+                  icon: '💡',
+                  title: '答案是：' + qItem.opts[qItem.ans],
+                  body: '雖然試煉花費了 60 恩典幣，但神的話語使你更剛強，獲得鼓勵獎 <strong>+' + fe + ' ❤️</strong>！',
+                  actions: [{ label: '繼續前進 ✨', style: 'primary', fn: nextTurn }]
+                });
+              }
+            }
+          });
+        })(i);
+      }
+
+      openEventModal({
+        badge: '🔥 ' + tile.name + ' • 聖經試煉問答',
+        icon: tile.icon,
+        title: '用神的話語勝過試煉！',
+        body: '<p class="font-black text-slate-900 mb-1">' + qItem.q + '</p><p class="text-[11px] text-amber-800">經文出處：' + qItem.ref + '</p>',
+        actions: acts
+      });
+    }
+
+    // ============================================================================
+    // 9. 彈窗與圖鑑控制、勝利與 LINE 分享
+    // ============================================================================
+    function openEventModal(cfg) {
+      document.getElementById('em-badge').innerText = cfg.badge;
+      document.getElementById('em-icon').innerText = cfg.icon;
+      document.getElementById('em-title').innerText = cfg.title;
+      document.getElementById('em-body').innerHTML = cfg.body;
+
+      var box = document.getElementById('em-actions');
+      box.innerHTML = '';
+      for (var i = 0; i < cfg.actions.length; i++) {
+        (function (a) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.innerText = a.label;
+          if (a.style === 'primary') {
+            b.className = 'w-full py-3 rounded-2xl bg-gradient-to-b from-amber-300 to-amber-500 border-b-4 border-amber-700 text-slate-950 font-black text-sm shadow';
+          } else if (a.style === 'secondary') {
+            b.className = 'w-full py-2.5 rounded-2xl bg-slate-200 text-slate-700 font-bold text-xs';
+          } else {
+            b.className = 'w-full py-2.5 px-3.5 rounded-2xl bg-white border-2 border-amber-300 text-slate-900 font-extrabold text-xs text-left';
+          }
+          b.onclick = function () {
+            closeModal('event-modal');
+            if (a.fn) a.fn();
+          };
+          box.appendChild(b);
+        })(cfg.actions[i]);
+      }
+      document.getElementById('event-modal').classList.remove('hidden');
+    }
+
+    function openStoryTimelineModal() {
+      playSfx('pop');
+      var list = document.getElementById('timeline-list');
+      var html = '';
+      for (var i = 0; i < STORY_CHAPTERS.length; i++) {
+        var ch = STORY_CHAPTERS[i];
+        var unlocked = ch.num <= unlockedChapter;
+        html +=
+          '<div class="rounded-2xl p-3 border-2 ' + (unlocked ? 'bg-amber-50 border-amber-500' : 'bg-slate-100 border-slate-300 opacity-70') + '">' +
+            '<div class="flex items-center justify-between mb-1">' +
+              '<span class="text-xs font-black text-slate-900">' + ch.icon + ' ' + ch.title + '</span>' +
+              '<span class="text-[10px] font-black px-2 py-0.5 rounded-full ' + (unlocked ? 'bg-amber-400 text-slate-950' : 'bg-slate-300 text-slate-700') + '">' +
+                (unlocked ? '已解鎖' : '待探索') +
+              '</span>' +
+            '</div>' +
+            '<div class="text-[10px] font-bold text-amber-800 mb-1">' + ch.era + '</div>' +
+            '<p class="text-[11px] text-slate-700 leading-relaxed">' + ch.summary + '</p>' +
+          '</div>';
+      }
+      list.innerHTML = html;
+      document.getElementById('timeline-modal').classList.remove('hidden');
+    }
+
+    function openProverbsModal() {
+      playSfx('pop');
+      var list = document.getElementById('proverbs-list');
+      if (collectedProverbs.length === 0) {
+        list.innerHTML = '<div class="py-8 text-center text-xs text-amber-900">尚未抽取到《聖經箴言》卷軸，快擲骰子走到伯特利天梯、曠野嗎哪或約旦河吧！</div>';
+      } else {
+        var html = '';
+        for (var i = 0; i < collectedProverbs.length; i++) {
+          var pv = collectedProverbs[i];
+          html +=
+            '<div class="proverb-scroll rounded-xl p-3 text-left">' +
+              '<div class="text-xs font-black text-amber-900 mb-1">📜 ' + pv.title + '（' + pv.ref + '）</div>' +
+              '<div class="text-xs font-extrabold text-amber-950 leading-relaxed mb-1">' + pv.text + '</div>' +
+              '<div class="text-[11px] text-amber-800">💡 ' + pv.reflect + '</div>' +
+            '</div>';
+        }
+        list.innerHTML = html;
+      }
+      document.getElementById('proverbs-modal').classList.remove('hidden');
+    }
+
+    function checkVictory() {
+      var winner = null;
+      for (var i = 0; i < players.length; i++) {
+        if (players[i].faith >= TARGET_FAITH) {
+          winner = players[i];
+          setPlayerExpression(i, 'victory');
+          break;
+        }
+      }
+      if (!winner) return false;
+
+      busyFlag = true;
+      renderPlayersHUD();
+      playSfx('victory');
+      spawnParticles3D(0, 2.5, 0, 60, 0xfde047);
+
+      document.getElementById('vic-title').innerText = '🎉 ' + winner.hero.icon + ' ' + winner.name + ' 榮耀得勝！';
+      var sum = '<div class="bg-amber-100 rounded-2xl p-3 text-left text-xs space-y-1.5">';
+      for (var j = 0; j < players.length; j++) {
+        var pl = players[j];
+        sum += '<div class="flex justify-between font-black text-slate-900">' +
+                 '<span>' + pl.hero.icon + ' ' + pl.name + '</span>' +
+                 '<span>❤️ ' + pl.faith + ' 信心 | 🪙 ' + pl.coins + ' 幣</span>' +
+               '</div>';
+      }
+      sum += '<div class="pt-1.5 border-t border-amber-400 text-amber-900 font-extrabold">📖 救恩章節推進至第 ' + unlockedChapter + ' 章 • 共珍藏 ' + collectedProverbs.length + ' 卷聖經箴言！</div></div>';
+      document.getElementById('vic-summary').innerHTML = sum;
+
+      lineShareCache =
+        '🗺️【聖經大富翁 3D：救恩歷史全紀錄】戰報！\n' +
+        '🏆 獲勝者：' + winner.hero.icon + ' ' + winner.name + '（累積 ' + winner.faith + ' 點信心值！）\n' +
+        '📖 探索以色列應許之地至第 ' + unlockedChapter + ' 章，珍藏 ' + collectedProverbs.length + ' 卷聖經箴言！';
+
+      document.getElementById('btn-copy-line').innerText = '📋 一鍵複製戰績分享 (LINE)';
+      document.getElementById('victory-modal').classList.remove('hidden');
+      return true;
+    }
+
+    function copyLineShare() {
+      playSfx('pop');
+      var btn = document.getElementById('btn-copy-line');
+      var ta = document.createElement('textarea');
+      ta.value = lineShareCache;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        btn.innerText = '✅ 已複製戰報！快貼到教會 LINE 群組';
+      } catch (e) {
+        btn.innerText = '⚠️ 請手動截圖分享戰績';
+      }
+      document.body.removeChild(ta);
+    }
+
+    function nextTurn() {
+      renderPlayersHUD();
+      if (checkVictory()) return;
+
+      turnIndex = (turnIndex + 1) % players.length;
+      busyFlag = false;
+      renderPlayersHUD();
+
+      var nxt = players[turnIndex];
+      setBanner('✨ 輪到 ' + nxt.name + ' (' + EXPRESSIONS[nxt.expr].emoji + ')', nxt.isAI ? 'AI 正在思考策略...' : '點擊下方擲 3D 骰子前進（單指可旋轉以色列地圖）');
+
+      if (nxt.isAI) {
+        setTimeout(rollDiceSequence, 850);
+      }
+    }
+
+    window.onload = function () {
+      renderStartCharacters();
+      init3DWorld();
+    };
+  </script>
+</body>
+</html>
